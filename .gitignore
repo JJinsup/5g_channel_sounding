@@ -1,0 +1,17 @@
+# MATLAB / measurement outputs
+outputs/
+
+# Large capture / processed artifacts
+*.mat
+*.h5
+
+# Figure / image exports
+*.png
+*.jpg
+*.jpeg
+*.fig
+
+# MATLAB autosave / editor artifacts
+*.asv
+*.m~
+
