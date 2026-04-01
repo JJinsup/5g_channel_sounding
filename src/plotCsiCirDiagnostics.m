@@ -1,5 +1,5 @@
 function figurePath = plotCsiCirDiagnostics(cirAnalysisResult, cfg, outputPrefix)
-%PLOTCSICIRDIAGNOSTICS Save simple diagnostics for CSI/CIR/PDP inspection.
+%PLOTCSICIRDIAGNOSTICS Save diagnostics for measured sparse observables and derived surrogate products.
 
 arguments
     cirAnalysisResult (1,1) struct
@@ -17,7 +17,7 @@ elseif isfield(cirAnalysisResult.pbchAnalysis, 'pbchBeforeRefinement')
     pbchBeforeRefinement = cirAnalysisResult.pbchAnalysis.pbchBeforeRefinement;
 end
 
-figurePath = [outputPrefix '_csi_cir_diagnostics.png'];
+figurePath = [outputPrefix '_channel_observation_diagnostics.png'];
 fig = figure('Visible', cfg.diagnostics.figureVisibility, 'Color', 'w', 'Position', [100 100 1500 950]);
 tiledlayout(fig, 3, 4, 'Padding', 'compact', 'TileSpacing', 'compact');
 
@@ -30,14 +30,15 @@ scatter(find(interpResult.knownMask(:)), abs(interpResult.sparseCSI(interpResult
 grid on;
 xlabel('Reference RE Sample');
 ylabel('|H|');
-title('Raw Sparse CSI Magnitude');
+title('Primary measured observable: sparse LS sample magnitude');
 
 nexttile;
 plotPbchPhasePerSymbol([], cirAnalysisResult.pbchAnalysis.pbchResult);
 grid on;
 xlabel('PBCH DM-RS Subcarrier');
 ylabel('Phase (rad)');
-title({'PBCH Phase vs Subcarrier', '(PBCH DM-RS symbols only; post-alignment only)'});
+title({'Primary measured observable: PBCH-DMRS phase', sprintf('(hypothesis-conditioned sparse samples; %s)', ...
+    cirAnalysisResult.pbchAnalysis.pbchResult.phaseAlignment.method)});
 
 nexttile;
 imagesc(abs(interpResult.sparseCSI));
@@ -45,7 +46,7 @@ axis xy;
 colorbar;
 xlabel('OFDM Symbol');
 ylabel('Subcarrier');
-title('Sparse CSI Magnitude');
+title('Primary measured observable: sparse LS channel grid');
 
 nexttile;
 interpMagnitudeDisplay = abs(interpResult.interpolatedCSI);
@@ -55,7 +56,7 @@ axis xy;
 colorbar;
 xlabel('OFDM Symbol');
 ylabel('Subcarrier');
-title(sprintf('Interpolated CSI Magnitude (ref-bearing syms only, selected sym %d)', interpResult.selectedSymbolIndex));
+title(sprintf('Derived surrogate: interpolated CFR grid (rep. sym %d)', interpResult.selectedSymbolIndex));
 
 nexttile;
 imagesc(interpResult.knownMask);
@@ -63,14 +64,15 @@ axis xy;
 colorbar;
 xlabel('OFDM Symbol');
 ylabel('Subcarrier');
-title('Valid Reference RE Mask');
+title('Measured PBCH-DMRS support mask');
 
 nexttile;
 plotPbchPhaseOffsetRemoved([], cirAnalysisResult.pbchAnalysis.pbchResult);
 grid on;
 xlabel('PBCH DM-RS Subcarrier');
 ylabel('Phase (rad)');
-title({'PBCH Phase Offset-Removed Overlay', '(PBCH DM-RS symbols only; post-alignment only)'});
+title({'Visualization-only PBCH phase overlay', sprintf('(offset-removed display; %s)', ...
+    cirAnalysisResult.pbchAnalysis.pbchResult.phaseAlignment.method)});
 
 nexttile;
 plot(preprocess.rawMagnitude, 'LineWidth', 1.0);
@@ -81,8 +83,8 @@ plot(find(preprocess.trustedMask), preprocess.phaseFlattenedMagnitude(preprocess
 grid on;
 xlabel('Subcarrier');
 ylabel('|H|');
-title('Selected-Symbol CSI Magnitude');
-legend('Raw', 'Known bins', 'Flat', 'Trusted', ...
+title('Derived surrogate: representative CFR magnitude');
+legend('Input', 'Measured bins', 'Display-processed', 'Display support', ...
     'Location', 'northwest', 'Box', 'off');
 
 nexttile;
@@ -90,7 +92,7 @@ plotSelectedSymbolPhase(preprocess, knownBySubcarrier);
 grid on;
 xlabel('Subcarrier');
 ylabel('Phase (rad)');
-title('Selected-Symbol CSI Phase');
+title('Derived surrogate: representative CFR phase');
 
 nexttile;
 centeredCirDisplay = cirResult.cirCenteredMagnitude ./ max(cirResult.cirCenteredMagnitude + eps);
@@ -99,7 +101,7 @@ plot(centeredDelayUs, centeredCirDisplay, 'LineWidth', 1.4, 'Color', [0 0.4470 0
 grid on;
 xlabel('Centered Delay (us)');
 ylabel('Normalized |h(tau)|');
-title('Centered CIR Magnitude');
+title('Derived surrogate: centered partial-band effective CIR');
 xlim([-20 20]);
 ylim([0 1]);
 
@@ -109,13 +111,13 @@ hold on;
 plot(1e6 * cirResult.peakCenteredDelayAxisSeconds, 10 * log10(cirResult.thresholdedPeakCenteredPdp + eps), '--', 'LineWidth', 1.0);
 grid on;
 xlabel('Relative Delay (us)');
-ylabel('PDP (dB)');
-title('Peak-Centered Power Delay Profile');
+ylabel('Derived surrogate PDP (dB)');
+title('Derived surrogate: peak-aligned partial-band effective PDP');
 legend('Raw', 'Thresholded', 'Location', 'northeast', 'Box', 'off');
 
 nexttile;
-relativeDelayNs = 1e9 * cirResult.causalDelayAxisSeconds;
-relativeCirDisplay = cirResult.causalCirNormalized ./ max(cirResult.causalCirNormalized + eps);
+relativeDelayNs = 1e9 * cirResult.relativeVisualizationDelayAxisSeconds;
+relativeCirDisplay = cirResult.relativeVisualizationMagnitude ./ max(cirResult.relativeVisualizationMagnitude + eps);
 area(relativeDelayNs, relativeCirDisplay, ...
     'FaceColor', [0.3010 0.7450 0.9330], ...
     'FaceAlpha', 0.35, ...
@@ -123,9 +125,9 @@ area(relativeDelayNs, relativeCirDisplay, ...
     'LineWidth', 1.2);
 hold on;
 grid on;
-xlabel('Delay From First Tap (ns)');
+xlabel('Relative Delay From First Threshold-Crossing (ns)');
 ylabel('Normalized Amplitude');
-title(sprintf('Relative CIR View (strongest = %.2f ns relative)', 1e9 * cirResult.strongestTapDelaySeconds));
+title(sprintf('Visualization-only relative delay view (dominant bin = %.2f ns relative)', 1e9 * cirResult.strongestTapDelaySeconds));
 xlim([0 2e4]);
 xticks(0:0.5e4:2e4);
 ax = gca;
@@ -137,11 +139,11 @@ plot(centeredDelayUs, 20 * log10(centeredCirDisplay + eps), 'LineWidth', 1.2, 'C
 grid on;
 xlabel('Centered Delay (us)');
 ylabel('Magnitude (dB)');
-title('Centered CIR Magnitude (dB)');
+title('Derived surrogate: centered partial-band effective CIR (dB)');
 xlim([-20 20]);
 ylim([-60 0]);
 
-sgtitle('CSI/CIR Diagnostics');
+sgtitle('Channel Observation Diagnostics');
 saveas(fig, figurePath);
 close(fig);
 end
@@ -265,6 +267,6 @@ if ~isempty(knownIdx)
     plot(knownIdx, preprocess.rawPhase(knownBySubcarrier), '.', 'MarkerSize', 9);
 end
 
-legend('Raw', 'Flat', 'Trusted', 'Known bins', ...
+legend('Input', 'Display-processed', 'Display support', 'Measured bins', ...
     'Location', 'northwest', 'Box', 'off');
 end

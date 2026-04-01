@@ -1,5 +1,5 @@
-function repeatResult = run_capture_only_repeat_test(testSpec)
-%RUN_CAPTURE_ONLY_REPEAT_TEST Repeat raw IQ capture under one fixed condition.
+function repeatResult = run1_capture_only_repeat_test(testSpec)
+%RUN1_CAPTURE_ONLY_REPEAT_TEST Repeat raw IQ capture under one fixed condition.
 %   This avoids inline analysis so the host can focus on capture stability.
 
 repoRoot = fileparts(mfilename('fullpath'));
@@ -87,6 +87,8 @@ testSpec = struct();
 testSpec.centerFrequencyHz = baseCfg.radio.centerFrequencyHz;
 testSpec.gainDb = 35;
 testSpec.sampleRate = baseCfg.radio.sampleRate;
-testSpec.durationMs = 15;
-testSpec.repeats = 10;
+% Keep the capture-only repeat test aligned with the longer default
+% observation window so SSB-burst-like repetition can be inspected later.
+testSpec.durationMs = 160;
+testSpec.repeats = 1;
 end

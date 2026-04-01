@@ -82,6 +82,8 @@ function testSpec = defaultTestSpec(baseCfg)
 testSpec = struct();
 testSpec.gainDb = 35;
 testSpec.centerFrequencyHz = baseCfg.radio.centerFrequencyHz + [-0.5e6 -0.25e6 0 0.25e6 0.5e6];
-testSpec.durationMs = 20;
+% Keep enough duration to observe burst-like structure while sweeping
+% frequency without making the sweep prohibitively slow.
+testSpec.durationMs = 40;
 testSpec.repeats = 3;
 end

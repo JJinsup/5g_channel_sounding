@@ -1,5 +1,5 @@
 function exportInfo = exportProcessedResult(cirAnalysisResult, cfg, captureMatPath)
-%EXPORTPROCESSEDRESULT Save the current processed baseline outputs.
+%EXPORTPROCESSEDRESULT Save the current processed observation outputs.
 
 arguments
     cirAnalysisResult (1,1) struct
@@ -10,6 +10,7 @@ end
 [~, captureBaseName] = fileparts(captureMatPath);
 outputPrefix = fullfile(cfg.paths.processedRoot, captureBaseName);
 durationBucket = getDurationBucketName(cirAnalysisResult.pbchAnalysis.syncGridResult.captureMetadata.requestedDurationMs);
+processedObservation = buildObservationExport(cirAnalysisResult, captureMatPath);
 
 if ~isfolder(cfg.paths.processedRoot)
     mkdir(cfg.paths.processedRoot);
@@ -26,7 +27,7 @@ end
 figurePrefix = fullfile(figureRoot, captureBaseName);
 
 if cfg.export.saveProcessedMat
-    save(processedMatPath, 'cirAnalysisResult', '-v7.3');
+    save(processedMatPath, 'processedObservation', '-v7.3');
 end
 
 figurePath = '';

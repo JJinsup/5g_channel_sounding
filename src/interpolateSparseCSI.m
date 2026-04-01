@@ -1,9 +1,7 @@
 function interpResult = interpolateSparseCSI(pbchResult)
-%INTERPOLATESPARSECSI Fill sparse PBCH DM-RS estimates over the 240x4 SSB block.
-%   Interpolate magnitude and phase separately so complex-valued spline-like
-%   artifacts do not reintroduce large phase curvature before the IFFT.
-%   The main CIR path uses a single selected CFR symbol instead of an
-%   across-symbol complex average.
+%INTERPOLATESPARSECSI Build an interpolated surrogate CFR from sparse PBCH-DMRS LS samples.
+%   The interpolation is a heuristic derived product over the 240x4 local
+%   SSB block. It should not be interpreted as directly measured dense CSI.
 
 arguments
     pbchResult (1,1) struct
@@ -75,6 +73,14 @@ interpResult.nanRatioBeforeInterpolation = nnz(isnan(sparseCSI)) / numel(sparseC
 interpResult.nanCountAfterInterpolation = nnz(isnan(filledCSI));
 interpResult.nanRatioAfterInterpolation = nnz(isnan(filledCSI)) / numel(filledCSI);
 interpResult.validRefRePerSymbol = sum(knownMask, 1);
+interpResult.measuredObservables = struct( ...
+    'hypothesisConditionedSparseLsChannelGrid', sparseCSI, ...
+    'measuredSparseRefMask', knownMask);
+interpResult.derivedSurrogateObservables = struct( ...
+    'interpolatedSurrogateCfrGrid', filledCSI, ...
+    'representativeSymbolIndex', bestSymbolIdx, ...
+    'representativeInterpolatedSurrogateCfr', selectedSymbolCSI, ...
+    'phaseAlignedAverageSurrogateCfr', alignedAverageCSI);
 end
 
 function filledValues = clampSymbolEdges(filledValues, knownSubcarriers, knownValues)

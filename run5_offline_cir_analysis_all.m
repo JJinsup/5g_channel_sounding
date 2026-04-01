@@ -1,7 +1,7 @@
-function batchResult = run_offline_cir_analysis_all(rawIqRoot)
-%RUN_OFFLINE_CIR_ANALYSIS_ALL Analyze every capture MAT file under rawIqRoot.
-%   Uses the same per-file CIR analysis path as run_offline_cir_analysis,
-%   then saves batch summaries separately for each capture-duration bucket.
+function batchResult = run5_offline_cir_analysis_all(rawIqRoot)
+%RUN5_OFFLINE_CIR_ANALYSIS_ALL Analyze every capture MAT file under rawIqRoot.
+%   Uses the same per-file sparse-observation and surrogate-CFR/CIR path as
+%   run_offline_cir_analysis, then saves batch summaries per duration bucket.
 
 repoRoot = fileparts(mfilename('fullpath'));
 addpath(fullfile(repoRoot, 'config'));
@@ -18,7 +18,7 @@ if isempty(listing)
         'No capture MAT files were found in %s.', rawIqRoot);
 end
 
-fprintf('=== Offline CIR Batch Analysis Start ===\n');
+fprintf('=== Offline Channel Observation Batch Analysis Start ===\n');
 fprintf('Input folder: %s\n', rawIqRoot);
 fprintf('Files found: %d\n', numel(listing));
 
@@ -32,7 +32,7 @@ for idx = 1:numel(listing)
     row.durationBucket = string(getDurationBucketName(double(row.durationMs)));
 
     try
-        cirAnalysisResult = run_offline_cir_analysis(capturePath);
+        cirAnalysisResult = run4_offline_cir_analysis(capturePath);
         row = populateSummaryRow(row, cirAnalysisResult);
     catch ME
         row.errorMessage = string(ME.message);
@@ -50,13 +50,13 @@ batchResult.summaryTable = summaryTable;
 batchResult.outputInfo = outputInfo;
 batchResult.rawIqRoot = rawIqRoot;
 
-fprintf('\n=== Offline CIR Batch Summary ===\n');
+fprintf('\n=== Offline Channel Observation Batch Summary ===\n');
 disp(summaryTable(:, {'fileIndex','durationBucket','analysisSucceeded','detectedPCI','selectedSCSkHz', ...
     'timingOffset','cfoEstimateHz','appliedResidualTimingSamples', ...
     'pbchPhaseSlopeAbsBefore','pbchPhaseSlopeAbsAfter', ...
     'cellSearchMetricDb','cellSearchPeakToMedianRatio', ...
-    'validRefReCount','validRefReRatio','sparseCsiNanRatio', ...
-    'peakPdp','peakDelayUs','wrappedPeakDelayUs', ...
+    'measuredSparseRefCount','measuredSparseRefRatio','measuredSparseGridNanRatio', ...
+    'dominantSurrogatePdp','dominantRelativeDelayUs','centeredDominantRelativeDelayUs', ...
     'isPrimaryPass','isHighConfidencePass','captureFile'}));
 
 fprintf('Saved duration-split batch summaries:\n');
@@ -85,21 +85,21 @@ row.appliedResidualTimingSamples = missing;
 row.pbchPhaseSlopeAbsBefore = missing;
 row.pbchPhaseSlopeAbsAfter = missing;
 row.pbchPhaseSlopeRadPerSubcarrier = missing;
-row.pbchBestSymbolStart = missing;
-row.pbchBestBlockEnergy = missing;
-row.selectedSymbolIndex = missing;
-row.validRefReCount = missing;
-row.totalRefBlockReCount = missing;
-row.validRefReRatio = missing;
-row.sparseCsiNanRatio = missing;
-row.interpolatedCsiNanRatio = missing;
-row.validRefReCountSym1 = missing;
-row.validRefReCountSym2 = missing;
-row.validRefReCountSym3 = missing;
-row.validRefReCountSym4 = missing;
-row.peakPdp = missing;
-row.peakDelayUs = missing;
-row.wrappedPeakDelayUs = missing;
+row.hypothesisBlockSymbolStart = missing;
+row.hypothesisBlockMeanEnergy = missing;
+row.representativeSurrogateSymbolIndex = missing;
+row.measuredSparseRefCount = missing;
+row.localHypothesisBlockReCount = missing;
+row.measuredSparseRefRatio = missing;
+row.measuredSparseGridNanRatio = missing;
+row.interpolatedSurrogateNanRatio = missing;
+row.measuredSparseRefCountSym1 = missing;
+row.measuredSparseRefCountSym2 = missing;
+row.measuredSparseRefCountSym3 = missing;
+row.measuredSparseRefCountSym4 = missing;
+row.dominantSurrogatePdp = missing;
+row.dominantRelativeDelayUs = missing;
+row.centeredDominantRelativeDelayUs = missing;
 row.isPrimaryPass = false;
 row.isHighConfidencePass = false;
 row.processedMatFile = "";
@@ -179,22 +179,22 @@ row.appliedResidualTimingSamples = phaseRefinement.appliedResidualTimingSamples;
 row.pbchPhaseSlopeAbsBefore = phaseRefinement.initialSlopeAbs;
 row.pbchPhaseSlopeAbsAfter = phaseRefinement.refinedSlopeAbs;
 row.pbchPhaseSlopeRadPerSubcarrier = phaseRefinement.medianSlopeRadPerSubcarrier;
-row.pbchBestSymbolStart = pbchResult.bestSymbolStart;
-row.pbchBestBlockEnergy = pbchResult.bestBlockEnergy;
-row.selectedSymbolIndex = interpResult.selectedSymbolIndex;
-row.validRefReCount = pbchResult.validRefReCount;
-row.totalRefBlockReCount = pbchResult.totalBlockReCount;
-row.validRefReRatio = pbchResult.validRefReRatio;
-row.sparseCsiNanRatio = interpResult.nanRatioBeforeInterpolation;
-row.interpolatedCsiNanRatio = interpResult.nanRatioAfterInterpolation;
+row.hypothesisBlockSymbolStart = pbchResult.bestSymbolStart;
+row.hypothesisBlockMeanEnergy = pbchResult.bestBlockEnergy;
+row.representativeSurrogateSymbolIndex = interpResult.selectedSymbolIndex;
+row.measuredSparseRefCount = pbchResult.validRefReCount;
+row.localHypothesisBlockReCount = pbchResult.totalBlockReCount;
+row.measuredSparseRefRatio = pbchResult.validRefReRatio;
+row.measuredSparseGridNanRatio = interpResult.nanRatioBeforeInterpolation;
+row.interpolatedSurrogateNanRatio = interpResult.nanRatioAfterInterpolation;
 validPerSymbol = interpResult.validRefRePerSymbol;
-row.validRefReCountSym1 = validPerSymbol(1);
-row.validRefReCountSym2 = validPerSymbol(2);
-row.validRefReCountSym3 = validPerSymbol(3);
-row.validRefReCountSym4 = validPerSymbol(4);
-row.peakPdp = max(cirResult.pdp);
-row.peakDelayUs = 1e6 * cirResult.peakDelaySeconds;
-row.wrappedPeakDelayUs = 1e6 * cirResult.centeredPeakDelaySeconds;
+row.measuredSparseRefCountSym1 = validPerSymbol(1);
+row.measuredSparseRefCountSym2 = validPerSymbol(2);
+row.measuredSparseRefCountSym3 = validPerSymbol(3);
+row.measuredSparseRefCountSym4 = validPerSymbol(4);
+row.dominantSurrogatePdp = max(cirResult.pdp);
+row.dominantRelativeDelayUs = 1e6 * cirResult.dominantRelativeDelaySeconds;
+row.centeredDominantRelativeDelayUs = 1e6 * cirResult.centeredDominantRelativeDelaySeconds;
 row.isPrimaryPass = row.detectedPCI == 1003 && row.selectedSCSkHz == 30;
 row.isHighConfidencePass = row.isPrimaryPass && ...
     row.cellSearchMetricDb > -25 && row.cellSearchPeakToMedianRatio > 40;

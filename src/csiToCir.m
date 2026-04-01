@@ -1,7 +1,7 @@
 function cirResult = csiToCir(csiVector, sampleRate, scsKHz, cfg)
-%CSITOCIR Convert frequency-domain CSI into a partial-band CIR/PDP.
-%   This result should be interpreted as an effective CIR over the captured
-%   partial bandwidth only.
+%CSITOCIR Convert an interpolated surrogate CFR into a partial-band effective CIR/PDP surrogate.
+%   This result is derived from a partial-band, hypothesis-conditioned CFR
+%   estimate and must not be interpreted as full-band or absolute-delay CSI.
 
 arguments
     csiVector (:,1) double
@@ -52,7 +52,8 @@ peakCenteredThresholdMask = peakCenteredPdpDb >= peakCenteredThresholdDb;
 thresholdedPeakCenteredPdp = peakCenteredPdp;
 thresholdedPeakCenteredPdp(~peakCenteredThresholdMask) = 0;
 
-% Build a causal-style view that starts at the earliest significant tap.
+% Build a relative-delay visualization window that starts at the earliest
+% threshold-crossing bin inside the peak-aligned display.
 significantTapIdx = find(peakCenteredThresholdMask, 1, 'first');
 if isempty(significantTapIdx)
     significantTapIdx = ceil(fftLength / 2);
@@ -100,8 +101,22 @@ cirResult.effectiveBandwidthHz = effectiveBandwidthHz;
 cirResult.delayResolutionSeconds = delayResolutionSeconds;
 cirResult.sampleRate = sampleRate;
 cirResult.scsKHz = scsKHz;
-cirResult.note = ['Partial-band effective CIR derived from interpolated PBCH DM-RS CSI. ' ...
-    'Use centeredDelayAxisSeconds for fftshifted inspection and causalDelayAxisSeconds as relative delay from the first significant tap.'];
+cirResult.dominantRelativeDelaySeconds = peakDelaySeconds;
+cirResult.centeredDominantRelativeDelaySeconds = centeredPeakDelaySeconds;
+cirResult.peakAlignedRelativeDelayAxisSeconds = peakCenteredDelayAxisSeconds;
+cirResult.relativeVisualizationDelayAxisSeconds = causalDelayAxisSeconds;
+cirResult.relativeVisualizationMagnitude = causalCirNormalized;
+cirResult.note = sprintf(['Partial-band effective CIR derived from interpolated PBCH DM-RS CSI. ' ...
+    'Phase flattening: %s. Window: %s. ' ...
+    'Use centeredDelayAxisSeconds for fftshifted inspection and relativeVisualizationDelayAxisSeconds as a relative visualization axis only.'], ...
+    char(string(preprocess.phaseFlatteningEnabled)), char(string(preprocess.windowName)));
+cirResult.derivedSurrogateObservables = struct( ...
+    'inputInterpolatedSurrogateCfr', csiVector, ...
+    'partialBandEffectiveCirSurrogate', cir, ...
+    'partialBandEffectivePdpSurrogate', pdp, ...
+    'relativeIfftDelayAxisSeconds', delayAxisSeconds, ...
+    'peakAlignedRelativeDelayAxisSeconds', peakCenteredDelayAxisSeconds, ...
+    'relativeVisualizationDelayAxisSeconds', causalDelayAxisSeconds);
 end
 
 function preprocess = preprocessCsiVector(csiVector, cfg)
@@ -109,16 +124,23 @@ numSubcarriers = numel(csiVector);
 subcarrierAxis = (1:numSubcarriers).';
 rawMagnitude = abs(csiVector);
 rawPhase = unwrap(angle(csiVector));
+phaseFitMask = false(numSubcarriers, 1);
+coeffs = [0 0];
+phaseFlattenedCSI = csiVector;
+phaseFlattenedMagnitude = rawMagnitude;
+phaseFlattenedPhase = rawPhase;
 
-phaseFitMask = rawMagnitude >= cfg.cir.phaseFitMagnitudeFraction * max(rawMagnitude + eps);
-if nnz(phaseFitMask) < 4
-    phaseFitMask = true(numSubcarriers, 1);
+if isfield(cfg.cir, 'enablePhaseFlattening') && cfg.cir.enablePhaseFlattening
+    phaseFitMask = rawMagnitude >= cfg.cir.phaseFitMagnitudeFraction * max(rawMagnitude + eps);
+    if nnz(phaseFitMask) < 4
+        phaseFitMask = true(numSubcarriers, 1);
+    end
+
+    coeffs = polyfit(double(subcarrierAxis(phaseFitMask)), rawPhase(phaseFitMask), 1);
+    phaseFlattenedCSI = csiVector .* exp(-1j * (coeffs(1) * subcarrierAxis + coeffs(2)));
+    phaseFlattenedMagnitude = abs(phaseFlattenedCSI);
+    phaseFlattenedPhase = unwrap(angle(phaseFlattenedCSI));
 end
-
-coeffs = polyfit(double(subcarrierAxis(phaseFitMask)), rawPhase(phaseFitMask), 1);
-phaseFlattenedCSI = csiVector .* exp(-1j * (coeffs(1) * subcarrierAxis + coeffs(2)));
-phaseFlattenedMagnitude = abs(phaseFlattenedCSI);
-phaseFlattenedPhase = unwrap(angle(phaseFlattenedCSI));
 
 trimCount = floor(cfg.cir.edgeTrimFraction * numSubcarriers);
 trustedMask = true(numSubcarriers, 1);
@@ -144,10 +166,14 @@ preprocess.edgeTrimCount = trimCount;
 preprocess.trustedMask = trustedMask;
 preprocess.taperWindow = taperWindow;
 preprocess.preparedCSI = preparedCSI;
+preprocess.phaseFlatteningEnabled = isfield(cfg.cir, 'enablePhaseFlattening') && cfg.cir.enablePhaseFlattening;
+preprocess.windowName = cfg.cir.window;
 end
 
 function window = buildWindow(windowName, numSubcarriers)
 switch lower(windowName)
+    case {'none', 'rect', 'rectangular'}
+        window = ones(numSubcarriers, 1);
     case 'hamming'
         window = hamming(numSubcarriers, 'periodic');
     case 'hann'

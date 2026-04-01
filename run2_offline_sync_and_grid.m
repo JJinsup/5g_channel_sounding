@@ -1,5 +1,5 @@
-function syncGridResult = run_offline_sync_and_grid(captureMatPath)
-%RUN_OFFLINE_SYNC_AND_GRID Synchronize a saved capture and build a resource grid.
+function syncGridResult = run2_offline_sync_and_grid(captureMatPath)
+%RUN2_OFFLINE_SYNC_AND_GRID Synchronize a saved capture and build a resource grid.
 %   Uses the current semi-guided search result, then applies timing
 %   correction and OFDM demodulation with the selected SCS.
 
@@ -20,6 +20,11 @@ end
 
 capture = loaded.results.capture;
 searchResult = runCellSearch(capture.iq, cfg, capture.metadata);
+if cfg.sync.requireSearchSuccess && ~searchResult.success
+    error('run_offline_sync_and_grid:CellSearchFailed', ...
+        ['Cell search did not meet the configured detection thresholds. ' ...
+         'Stopping before timing/CFO/grid processing to avoid generating misleading CSI.']);
+end
 syncResult = correctTimingOffset(capture.iq, searchResult.timingOffset, cfg);
 cfoResult = struct('estimatedCfoHz', 0, ...
     'correctedWaveform', syncResult.synchronizedWaveform, ...
@@ -97,6 +102,8 @@ if cfg.sync.enablePbchPhaseRefinement
     phaseRefinementResult.selectedTimingSign = bestCandidate.timingSign;
     phaseRefinementResult.initialSlopeAbs = initialSlopeAbs;
     phaseRefinementResult.refinedSlopeAbs = bestCandidate.slopeAbs;
+else
+    phaseRefinementResult.method = 'disabled-by-config';
 end
 
 syncGridResult = struct();

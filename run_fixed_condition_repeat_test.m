@@ -115,6 +115,9 @@ testSpec = struct();
 testSpec.centerFrequencyHz = baseCfg.radio.centerFrequencyHz;
 testSpec.gainDb = 35;
 testSpec.sampleRate = baseCfg.radio.sampleRate;
-testSpec.durationMs = 10;
+% Use a shorter window than the capture-only test to keep repeated
+% capture+analysis cycles manageable while still giving SSB bursts time to
+% appear in most runs.
+testSpec.durationMs = 40;
 testSpec.repeats = 10;
 end
