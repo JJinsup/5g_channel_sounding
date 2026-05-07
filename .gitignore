@@ -1,6 +1,5 @@
 # MATLAB / measurement outputs
 outputs/
-docs/
 
 # Large capture / processed artifacts
 *.mat
