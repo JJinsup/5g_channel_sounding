@@ -9,8 +9,9 @@ MATLAB 5G Toolbox 공식 예제 흐름으로 실제 5G private network downlink 
 - MATLAB
 - 5G Toolbox
 - Communications Toolbox
-- Communications Toolbox Support Package for USRP Radio
 - Signal Processing Toolbox
+- X300/X310: Wireless Testbench Support Package for NI USRP Radios
+- B200/B210: Communications Toolbox Support Package for USRP Radio
 
 ## Before Running
 
@@ -18,19 +19,21 @@ MATLAB 5G Toolbox 공식 예제 흐름으로 실제 5G private network downlink 
 
 ```text
 config/b210_config.m
-config/x310_config.m
+config/x300_config.m
 ```
 
-X310을 쓸 때는 [config/x310_config.m](config/x310_config.m)을 확인하세요.
+X300/X310 계열은 [config/x300_config.m](config/x300_config.m) 하나를 씁니다.
 
 ```matlab
-overrides.radio.serialNum = '';   % empty: first discovered X310 IP
+overrides.radio.serialNum = '192.168.40.2';   % X300/X310 10GbE IP address
 overrides.radio.gain = 25;
 overrides.radio.channelMapping = 1;
+overrides.radio.transportDataType = 'int16';
+overrides.ssbCapture.deviceName = "X300";     % actual MATLAB platform name
 overrides.ssbCapture.sampleRate = 184.32e6;
 ```
 
-자동 discovery가 안 되거나 X310이 여러 대면 `overrides.radio.serialNum`에 X310 IP 주소를 넣으세요. 이름은 기존 코드 호환 때문에 `serialNum`이지만, X300/X310에서는 `DeviceAddress`/`IPAddress`로 사용됩니다.
+자동 discovery가 안 되거나 X300/X310이 여러 대면 `overrides.radio.serialNum`에 SDR IP 주소를 넣으세요. 이름은 기존 코드 호환 때문에 `serialNum`이지만, X300/X310에서는 `DeviceAddress`/`IPAddress`로 사용됩니다. 실제 보드가 X310이면 별도 config를 만들지 말고 같은 파일에서 `overrides.ssbCapture.deviceName`만 `"X310"`으로 바꾸세요.
 
 현재 튜닝 기준:
 
@@ -54,10 +57,10 @@ MATLAB에서 프로젝트 폴더로 이동합니다.
 cd('/home/jinsub/channel/5g_channel_sounding')
 ```
 
-X310으로 새 캡처를 뜹니다.
+X300/X310 계열로 새 캡처를 뜹니다.
 
 ```matlab
-run1_capture_ssb_using_sdr("Config","config/x310_config.m","SaveFigures",true)
+run1_capture_ssb_using_sdr("Config","config/x300_config.m","SaveFigures",true)
 ```
 
 B210으로 캡처하려면 profile만 바꿉니다.
@@ -70,8 +73,8 @@ run1_capture_ssb_using_sdr("Config","config/b210_config.m","SaveFigures",true)
 
 ```matlab
 run2_recover_mib_sib1_from_data( ...
-    "outputs/1_IQcapture/capturedWaveform_x310_YYMMDD_HHMMSS.mat", ...
-    "Config","config/x310_config.m", ...
+    "outputs/1_IQcapture/capturedWaveform_x300_YYMMDD_HHMMSS.mat", ...
+    "Config","config/x300_config.m", ...
     "SaveFigures",true)
 ```
 
@@ -109,8 +112,11 @@ recovery.csi.csirsCandidate
 
 ## Tips
 
-- X310 + UBX-160은 현재 `184.32 MS/s` profile로 설정되어 있습니다.
-- X310 캡처가 안 잡히면 먼저 IP 주소, 10GbE 연결, clock/reference 상태, RX 포트, gain을 확인하세요.
+- X300/X310 + UBX-160은 10GbE 전용 `184.32 MS/s` profile로 설정되어 있습니다.
+- X300/X310에서 `Non-default FPGA image detected`가 뜨면 MATLAB에서 실행하세요: `status = sdruload(Device="x300",IPAddress="192.168.40.2")`
+- 10GbE NIC 예시: `sudo ip addr flush dev <iface> && sudo ip addr add 192.168.40.1/24 dev <iface> && sudo ip link set dev <iface> up mtu 9000`
+- X300/X310 Ethernet buffer 권장값: `sudo sysctl -w net.core.rmem_max=33554432 net.core.wmem_max=33554432`
+- X300/X310 캡처가 안 잡히면 먼저 IP 주소, 10GbE 링크 속도, MTU, clock/reference 상태, RX 포트, gain을 확인하세요.
 - 캡처 주파수는 UE에서 본 `717216 / 4758.24 MHz` 기준입니다.
 - CSI-RS는 아직 후보 추출입니다. 확정 결과로 쓰려면 gNB의 CSI-RS row, port, CDM, slot offset, RB allocation, scrambling ID가 필요합니다.
 - 자세한 배경은 [docs/resource.md](docs/resource.md), 전체 처리 흐름은 [docs/sdr_capture_to_csi_pipeline.md](docs/sdr_capture_to_csi_pipeline.md)를 보세요.

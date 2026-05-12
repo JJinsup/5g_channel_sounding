@@ -13,7 +13,7 @@ addpath(fullfile(repoRoot,"config"));
 addpath(fullfile(repoRoot,"src"));
 
 %% User Settings
-configuredConfigFile = "config/b210_config.m";
+configuredConfigFile = "config/x300_config.m";
 
 [configFile,overrides,runOptions] = parseInputs(varargin{:});
 if strlength(configFile) == 0
@@ -29,6 +29,9 @@ fprintf("Band: %s\n",cfg.ssbCapture.band);
 fprintf("GSCN: %d\n",cfg.ssbCapture.gscn);
 fprintf("Gain: %.1f dB\n",cfg.radio.gain);
 fprintf("Channel mapping: %s\n",mat2str(cfg.radio.channelMapping));
+if isfield(cfg.radio,"transportDataType") && strlength(string(cfg.radio.transportDataType)) > 0
+    fprintf("Transport data type: %s\n",string(cfg.radio.transportDataType));
+end
 
 rx = [];
 cleanupObj = onCleanup(@() releaseReceiver(rx));
@@ -36,6 +39,9 @@ cleanupObj = onCleanup(@() releaseReceiver(rx));
 rx = hSDRReceiver(cfg.ssbCapture.deviceName);
 if strlength(string(cfg.radio.serialNum)) > 0
     rx.DeviceAddress = cfg.radio.serialNum;
+end
+if isfield(cfg.radio,"transportDataType") && strlength(string(cfg.radio.transportDataType)) > 0
+    rx.TransportDataType = cfg.radio.transportDataType;
 end
 rx.ChannelMapping = cfg.radio.channelMapping;
 rx.Gain = cfg.radio.gain;
@@ -64,6 +70,7 @@ captureDuration = seconds((framesPerCapture+1)*10e-3);
 fprintf("Capture duration: %.1f ms\n",seconds(captureDuration)*1e3);
 
 [waveform,captureTimestamp] = capture(rx,captureDuration);
+assertValidCapture(waveform);
 rxReleased = rx;
 release(rxReleased);
 
@@ -165,6 +172,19 @@ if ~isempty(rx)
         release(rx);
     catch
     end
+end
+end
+
+function assertValidCapture(waveform)
+if isempty(waveform) || size(waveform,1) == 0
+    error("run1_capture_ssb_using_sdr:EmptyCapture", ...
+        "SDR capture returned no samples. Check the preceding SDR/UHD warning before running SSB detection.");
+end
+
+hasNonzeroSamples = any(real(waveform(:)) ~= 0 | imag(waveform(:)) ~= 0);
+if ~hasNonzeroSamples
+    error("run1_capture_ssb_using_sdr:InvalidCapture", ...
+        "SDR capture returned only zero samples. Check the preceding SDR/UHD warning before running SSB detection.");
 end
 end
 

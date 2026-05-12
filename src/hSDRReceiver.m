@@ -65,6 +65,7 @@ classdef hSDRReceiver < hSDRBase
     properties(Dependent)
         Gain;
         OutputDataType;
+        TransportDataType;
     end
 
     properties(Hidden, Dependent)
@@ -83,6 +84,7 @@ classdef hSDRReceiver < hSDRBase
                 options.ChannelMapping
                 options.Gain
                 options.OutputDataType
+                options.TransportDataType
             end
             % Call base class constructor to set up listeners
             obj@hSDRBase;
@@ -130,6 +132,24 @@ classdef hSDRReceiver < hSDRBase
                 value = obj.SDRObj.CaptureDataType;
             else
                 value = obj.SDRObj.OutputDataType;
+            end
+        end
+
+        %TransportDataType
+        function set.TransportDataType(obj,value)
+            if isprop(obj.SDRObj,"TransportDataType")
+                obj.SDRObj.TransportDataType = value;
+            else
+                warning("hSDRReceiver:UnsupportedTransportDataType", ...
+                    "TransportDataType is not supported for %s.",obj.DeviceName);
+            end
+        end
+
+        function value = get.TransportDataType(obj)
+            if isprop(obj.SDRObj,"TransportDataType")
+                value = obj.SDRObj.TransportDataType;
+            else
+                value = "";
             end
         end
 
@@ -222,16 +242,15 @@ classdef hSDRReceiver < hSDRBase
                 [data,mData] = capture(obj.SDRObj,len,'EnableOversizeCapture',true);
             elseif matches(obj.DeviceName, obj.ListOfWTConfigurations)
                 [data,mData.Date] = capture(obj.SDRObj,len);
-            else % USRP and RTL-SDR
-                 % Sometimes USRPs throw error message during burst capture.
-                 % Throw as warning instead and supply zeros on output.
+            elseif matches(obj.DeviceName,obj.ListOfUSRPs)
+                data = captureUSRPFrames(obj,len);
+                mData.Date = datetime('now');
+            else % RTL-SDR
                 try
                     [data,mData] = capture(obj.SDRObj,len);
                 catch e
-                    warning(e.identifier,'%s',e.message)
                     release(obj)
-                    data = zeros(len,length(obj.ChannelMapping),'like',1i);
-                    mData.Date = datetime('now');
+                    rethrow(e)
                 end
 
             end
@@ -260,6 +279,45 @@ classdef hSDRReceiver < hSDRBase
 
     end
 
+end
+
+function data = captureUSRPFrames(obj,len)
+rxObj = obj.SDRObj;
+frameLength = min(len,max(4096,round(obj.SampleRate*2e-3)));
+rxObj.SamplesPerFrame = frameLength;
+
+data = zeros(len,numel(obj.ChannelMapping),'like',complex(single(0)));
+writeIndex = 1;
+framesNeeded = ceil(len/frameLength);
+maxFrames = max(20,framesNeeded*20);
+overrunCount = 0;
+
+for frameIdx = 1:maxFrames
+    [frame,dataLen,overrun] = rxObj();
+
+    if overrun ~= 0
+        overrunCount = overrunCount + 1;
+        writeIndex = 1;
+        continue;
+    end
+
+    if dataLen == 0
+        continue;
+    end
+
+    frame = frame(1:dataLen,:);
+    samplesToCopy = min(size(frame,1),len-writeIndex+1);
+    data(writeIndex:writeIndex+samplesToCopy-1,:) = frame(1:samplesToCopy,:);
+    writeIndex = writeIndex + samplesToCopy;
+
+    if writeIndex > len
+        return;
+    end
+end
+
+error("hSDRReceiver:USRPFrameCaptureFailed", ...
+    "Could not collect %.1f ms of contiguous USRP samples after %d frames. Overrun frames: %d.", ...
+    1e3*len/obj.SampleRate,maxFrames,overrunCount);
 end
 
 function validateRadioName(radio)
