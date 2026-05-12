@@ -12,12 +12,17 @@ addpath(fullfile(repoRoot,"config"));
 addpath(fullfile(repoRoot,"src"));
 
 %% User Settings
+configuredConfigFile = "config/b210_config.m";
 % Leave empty to use the latest capturedWaveform_*.mat in outputs/1_IQcapture.
 configuredCaptureFile = "outputs/1_IQcapture/61.44_260507.mat";
 configuredSaveFigures = false;
 
-cfg = default_config(repoRoot);
 [captureFile,runOptions] = parseInputs(varargin{:});
+configFile = runOptions.configFile;
+if strlength(configFile) == 0
+    configFile = configuredConfigFile;
+end
+cfg = load_project_config(repoRoot,configFile);
 if strlength(string(captureFile)) == 0 && strlength(configuredCaptureFile) > 0
     captureFile = configuredCaptureFile;
 end
@@ -32,6 +37,9 @@ opts = struct();
 opts.enablePlots = true;
 opts.closeFiguresAfterRun = runOptions.closeFiguresAfterRun;
 opts.minChannelBW = cfg.receiver.minChannelBW;
+opts.extractCsirsCandidate = cfg.receiver.extractCsirsCandidate;
+opts.csirsGridMode = cfg.receiver.csirsGridMode;
+opts.csirsCarrierNSizeGrid = cfg.receiver.csirsCarrierNSizeGrid;
 opts.saveResult = true;
 opts.outputDir = cfg.paths.processedRoot;
 opts.saveFigures = runOptions.saveFigures;
@@ -60,13 +68,15 @@ runOptions.saveFigures = false;
 runOptions.figureDir = "";
 runOptions.figureFormat = "pdf";
 runOptions.closeFiguresAfterRun = false;
+runOptions.configFile = "";
 
 if isempty(varargin)
     return;
 end
 
 optionNames = ["savefigures" "savefigure" "save" "figuredir" ...
-    "outputfiguredir" "figureformat" "format" "closefiguresafterrun"];
+    "outputfiguredir" "figureformat" "format" "closefiguresafterrun" ...
+    "config" "configfile" "profile"];
 firstArg = lower(string(varargin{1}));
 if ~any(firstArg == optionNames)
     captureFile = varargin{1};
@@ -90,6 +100,8 @@ for idx = 1:2:numel(varargin)
             runOptions.figureFormat = string(value);
         case "closefiguresafterrun"
             runOptions.closeFiguresAfterRun = parseLogical(value);
+        case {"config","configfile","profile"}
+            runOptions.configFile = string(value);
         otherwise
             error("run2_recover_mib_sib1_with_figures:UnknownOption", ...
                 "Unknown option: %s.",name);

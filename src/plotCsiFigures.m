@@ -12,6 +12,10 @@ end
 if isfield(csi,"pdschDmrsLs")
     figureHandles(end+1,1) = plotOneCsi(csi.pdschDmrsLs,"SIB1 PDSCH DM-RS CSI");
 end
+if isfield(csi,"csirsCandidate") && isfield(csi.csirsCandidate,"lsEstimate") && ...
+        ~isempty(csi.csirsCandidate.lsEstimate)
+    figureHandles(end+1,1) = plotOneCsi(csi.csirsCandidate,"TRS/NZP CSI-RS Candidate CSI");
+end
 end
 
 function fig = plotOneCsi(csiEntry, figureTitle)
@@ -20,7 +24,26 @@ tiledlayout(fig,2,2,"Padding","compact","TileSpacing","compact");
 
 sparseGrid = csiEntry.sparseGrid;
 referenceMask = csiEntry.referenceMask;
+isCsirsEntry = isfield(csiEntry,"source") && contains(string(csiEntry.source),"CSI-RS");
+if isCsirsEntry && isfield(csiEntry,"activeSlots") && ~isempty(csiEntry.activeSlots)
+    symbolsPerSlot = 14;
+    firstSymbol = csiEntry.activeSlots(1)*symbolsPerSlot + 1;
+    lastSymbol = csiEntry.activeSlots(end)*symbolsPerSlot + symbolsPerSlot;
+    lastSymbol = min(lastSymbol,size(sparseGrid,2));
+    sparseGrid = sparseGrid(:,firstSymbol:lastSymbol,:);
+    referenceMask = referenceMask(:,firstSymbol:lastSymbol,:);
+end
+if ~ismatrix(sparseGrid)
+    sparseGrid = sparseGrid(:,:,1);
+    referenceMask = referenceMask(:,:,1);
+end
 lsEstimate = csiEntry.lsEstimate(:);
+sourceName = "REF";
+if isCsirsEntry
+    sourceName = "CSIRS";
+elseif isfield(csiEntry,"source") && contains(string(csiEntry.source),"DM-RS")
+    sourceName = "DMRS";
+end
 magDbGrid = 20*log10(abs(sparseGrid) + eps);
 phaseGrid = angle(sparseGrid);
 magDbGrid(~referenceMask) = NaN;
@@ -28,7 +51,7 @@ phaseGrid(~referenceMask) = NaN;
 
 nexttile;
 plotSparseImage(magDbGrid,referenceMask);
-title("|H_{DMRS}| (dB)");
+title("|H_{" + sourceName + "}| (dB)");
 xlabel("OFDM symbol");
 ylabel("Subcarrier");
 cb = colorbar;
@@ -36,7 +59,7 @@ cb.Label.String = "dB";
 
 nexttile;
 plotSparseImage(phaseGrid,referenceMask);
-title("angle(H_{DMRS})");
+title("angle(H_{" + sourceName + "})");
 xlabel("OFDM symbol");
 ylabel("Subcarrier");
 cb = colorbar;

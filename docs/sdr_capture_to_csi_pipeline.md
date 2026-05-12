@@ -1,33 +1,34 @@
 # SDR Capture to CSI Pipeline
 
-이 문서는 `5g_channel_sounding` 프로젝트에서 SDR로 실제 5G private network downlink 신호를 캡처한 뒤, MATLAB 5G Toolbox 공식 예제 기반 receiver로 MIB/SIB1을 복구하고, 마지막으로 DM-RS 기반 CSI figure와 결과 MAT 파일을 만드는 전체 흐름을 설명한다.
+이 문서는 `5g_channel_sounding` 프로젝트에서 SDR로 실제 5G private network downlink 신호를 캡처한 뒤, MATLAB 5G Toolbox 공식 예제 기반 receiver로 MIB/SIB1을 복구하고, 마지막으로 DM-RS 및 TRS/NZP CSI-RS 후보 기반 CSI figure와 결과 MAT 파일을 만드는 전체 흐름을 설명한다.
 
 핵심 결론부터 정리하면 다음과 같다.
 
 - 이 프로젝트의 receiver 알고리즘 기준은 MathWorks 공식 예제 `NRSSBCaptureUsingSDRExample`와 `NRCellSearchMIBAndSIB1RecoveryExample`이다.
 - `run1_capture_ssb_using_sdr.m`은 SDR에서 raw IQ waveform을 캡처하고 SSB를 검출한 뒤, 다음 단계에서 그대로 읽을 수 있는 MAT 파일을 저장한다.
 - `run2_recover_mib_sib1_with_figures.m`와 `run2_recover_mib_sib1_from_data.m`는 저장된 MAT 파일을 읽고, 공식 예제 receiver 흐름으로 PSS/SSS/PBCH/MIB/CORESET0/PDCCH/PDSCH/SIB1을 복구한다.
-- CSI는 CSI-RS 기반이 아니다. 현재 CSI는 PBCH DM-RS와 SIB1 PDSCH DM-RS를 이용한 sparse least-squares channel estimate이다.
-- CSI 계산식은 reference signal 위치마다 `H_DMRS = Y_DMRS / X_DMRS`이다. 여기서 `Y_DMRS`는 수신 resource grid에서 뽑은 DM-RS RE이고, `X_DMRS`는 5G Toolbox가 cell ID와 decoded configuration으로 재생성한 송신 DM-RS symbol이다.
+- 기본 CSI는 PBCH DM-RS와 SIB1 PDSCH DM-RS를 이용한 sparse least-squares channel estimate이다. 현재 run2는 추가로 TRS/NZP CSI-RS 후보 config에 대한 sparse LS CSI도 계산한다.
+- CSI 계산식은 reference signal 위치마다 `H = Y / X`이다. DM-RS는 `H_DMRS = Y_DMRS / X_DMRS`, CSI-RS 후보는 `H_CSIRS = Y_CSIRS / X_CSIRS`로 계산한다.
 - figure 저장을 켜면 공식 예제 figure와 프로젝트에서 추가한 CSI figure가 `outputs/2_processed/figures/<capture-file-name>/figures.pdf` 하나의 multipage PDF로 저장된다.
 
 ## 1. 측정 대상과 전제값
 
 현재 프로젝트는 학교 5G 특화망의 downlink를 passive receive 방식으로 관측한다. UE attach, uplink transmit, NAS/RRC procedure 구현, user-data 복호화는 하지 않는다.
 
-알려진 환경값은 다음과 같다.
+상세 환경값의 기준 문서는 `docs/resource.md`의 Known Environment이다. 여기서는 receiver 흐름 이해에 필요한 값만 요약한다.
 
 ```text
 Network: 5G Private Network
 Deployment: Rel-16 based
 Band: n79
-RU frequency range: 4720 MHz - 4920 MHz
 Channel bandwidth: 100 MHz
-PLMN: 450-40
-ARFCN: 717216
-Approximate center frequency: 4758.24 MHz
-GSCN: 8720
-PCI candidates: 1002, 1003, 1004
+UE-observed / SSB ARFCN: 717216
+UE-observed / SSB frequency: 4758.24 MHz
+CSV cell-physical nr-arfcn-dl/ul: 718000
+CSV cell-physical frequency equivalent: 4770.00 MHz
+CSV ssb-loc-arfcn: 717216
+SSB / GSCN capture frequency used by run1: 4758.24 MHz
+GSCN used by run1: 8720
 Confirmed PCI / NCellID: 1003
 Confirmed SSB index: 1
 Confirmed common SCS: 30 kHz
@@ -129,6 +130,8 @@ rx.CenterFrequency = hSynchronizationRasterInfo.gscn2frequency(cfg.ssbCapture.gs
 ```
 
 현재 `gscn = 8720`이므로 center frequency는 약 `4758.24 MHz`다. 이 값은 n79 특화망 후보값과 일치한다.
+
+주의할 점은 `5g_NW_config` 안에 ARFCN 관련 값이 두 개 있다는 것이다. UE 관리페이지와 `ssb_config.csv`의 `ssb-loc-arfcn`은 `717216`, 즉 4758.24 MHz로 일치한다. 반면 `cell-physical-conf-idle.csv`에는 `nr-arfcn-dl/ul = 718000`도 따로 있다. 현재 run1은 UE에서 본 값과 같은 SSB/GSCN 주파수인 4758.24 MHz에 맞춰 캡처한다.
 
 ### 3.3 SSB SCS와 sample rate
 
@@ -705,13 +708,14 @@ lsEstimate = rxSymbols ./ txSymbols;
 
 현재 결과를 해석할 때 아래를 명확히 구분해야 한다.
 
-- 현재 CSI는 CSI-RS 기반 CSI가 아니다.
+- 현재 `csirsCandidate`는 confirmed CSI-RS가 아니라 TRS/NZP CSI-RS 후보 기반 CSI다.
 - 현재 CSI는 full-band 100 MHz channel estimate가 아니다.
 - 현재 CSI는 CIR/PDP가 아니다.
 - 현재 CSI는 UE feedback CSI, PMI/RI/CQI 같은 report가 아니다.
-- 현재 CSI는 gNB가 송신한 known DM-RS를 passive receiver가 관측해서 만든 complex channel coefficient다.
+- 현재 DM-RS CSI는 gNB가 송신한 known DM-RS를 passive receiver가 관측해서 만든 complex channel coefficient다.
+- 현재 CSI-RS 후보 CSI는 `docs/trs_nzp_csirs_candidate.md`의 가정값으로 만든 `nrCSIRSConfig`를 사용해 같은 방식으로 계산한 complex channel coefficient다.
 
-CSI-RS 기반 CSI를 하려면 gNB의 CSI-RS resource configuration이 필요하다. 현재 log와 MIB/SIB1 recovery만으로는 arbitrary CSI-RS resource를 blind하게 신뢰성 있게 찾아낼 수 없다. 그래서 현재 프로젝트는 공식 예제로 확실히 복구 가능한 PBCH DM-RS와 SIB1 PDSCH DM-RS를 기준으로 한다.
+Confirmed CSI-RS 기반 CSI를 주장하려면 gNB의 정확한 CSI-RS resource configuration이 필요하다. 현재 `csirsCandidate`는 DU CSV에서 찾은 period/symbol 후보와 표준 TRS 가정을 적용한 hypothesis-based result이다.
 
 ## 8. CSI figure는 무엇을 보여주는가
 
@@ -721,7 +725,7 @@ CSI figure는 `src/plotCsiFigures.m`에서 만든다.
 figureHandles = plotCsiFigures(recovery.csi);
 ```
 
-PBCH DM-RS CSI가 있으면 `PBCH DM-RS CSI` figure를 만들고, PDSCH DM-RS CSI가 있으면 `SIB1 PDSCH DM-RS CSI` figure를 만든다.
+PBCH DM-RS CSI가 있으면 `PBCH DM-RS CSI` figure를 만들고, PDSCH DM-RS CSI가 있으면 `SIB1 PDSCH DM-RS CSI` figure를 만든다. CSI-RS 후보가 있으면 `TRS/NZP CSI-RS Candidate CSI` figure도 만든다.
 
 각 CSI figure는 2x2 layout이다.
 
@@ -927,7 +931,7 @@ Figure output: outputs/2_processed/figures/61.44_260507/figures.pdf
 
 이 프로젝트의 측정/분석 논리는 아래 순서로 설명하면 된다.
 
-1. SDR은 n79 GSCN 8720, 약 4758.24 MHz 중심의 complex baseband IQ waveform을 수신한다.
+1. SDR은 n79 GSCN 8720, 약 4758.24 MHz의 SSB sync raster 중심에서 complex baseband IQ waveform을 수신한다. 이 값은 UE 관리페이지의 ARFCN 717216과 `ssb_config.csv`의 `ssb-loc-arfcn`에 대응한다.
 2. MATLAB 5G Toolbox 공식 SSB capture 흐름으로 PSS/SSS/PBCH를 찾아 실제 cell이 잡혔는지 검증한다.
 3. 캡처된 waveform과 receiver parameter를 MAT 파일로 저장한다.
 4. 저장된 waveform을 공식 `NRCellSearchMIBAndSIB1RecoveryExample` receiver에 넣는다.
@@ -1020,11 +1024,12 @@ run2_recover_mib_sib1_with_figures.m
 run2_recover_mib_sib1_from_data.m
 src/NRCellSearchMIBAndSIB1RecoveryExample.m
 src/recoverMibSib1FromCapture.m
+src/extractCsirsCandidateCsi.m
 src/plotCsiFigures.m
 src/saveFigureSet.m
 ```
 
-가장 중요한 CSI 계산부는 `src/recoverMibSib1FromCapture.m` 안의 아래 두 block이다.
+가장 중요한 DM-RS CSI 계산부는 `src/recoverMibSib1FromCapture.m` 안의 아래 두 block이다.
 
 ```text
 PBCH DM-RS LS CSI block:
@@ -1033,6 +1038,8 @@ if exist("ssbGrid","var") && exist("dmrsIndices","var") ...
 SIB1 PDSCH DM-RS LS CSI block:
 if exist("rxSlotGrid","var") && exist("pdschDmrsIndices","var") ...
 ```
+
+CSI-RS 후보 스캔/선택/추출은 `src/extractCsirsCandidateCsi.m`에 있다.
 
 figure 생성부는 `src/plotCsiFigures.m`, multipage PDF 저장부는 `src/saveFigureSet.m`에 있다.
 
@@ -1110,23 +1117,21 @@ CSI-RS port 수와 CDM 구조가 무엇인가
 
 그래서 현재 단계에서 “CSI-RS를 blind로 추출했다”고 말하는 것은 위험하다. 가능은 하더라도 research hypothesis이고, 공식 예제 기반 검증된 pipeline이라고 말하기 어렵다.
 
-### 16.2 CSI-RS 추출을 구현한다면 추가할 단계
+### 16.2 현재 구현된 CSI-RS 후보 추출
 
-CSI-RS configuration을 확보했다면 구현 방향은 현재 DM-RS CSI와 거의 같다. 차이는 DM-RS index/symbol 생성 함수 대신 CSI-RS configuration을 사용한다는 점이다.
+현재 run2는 `docs/trs_nzp_csirs_candidate.md`의 CSV 확인값과 가정값을 사용해 TRS/NZP CSI-RS 후보 CSI를 계산한다. 목적은 RSRP/RSRQ 같은 측정값이 아니라 DM-RS CSI와 같은 복소 채널값이다.
 
-구현 단계는 다음 순서가 적절하다.
+구현 위치는 `src/extractCsirsCandidateCsi.m`이며, `src/recoverMibSib1FromCapture.m`의 run2 recovery 후반부에서 호출한다. 공식 CSI-RS 예제의 핵심 흐름만 이식했다.
 
 ```text
-1. gNB 또는 UE log에서 CSI-RS resource configuration을 확보한다.
-2. `config/default_config.m` 또는 별도 config 파일에 `cfg.csirs` 구조체를 추가한다.
-3. run2 receiver가 frame/slot timing과 common grid를 복구한 뒤, CSI-RS가 포함된 slot을 선택한다.
-4. MATLAB 5G Toolbox CSI-RS config object를 구성한다.
-5. CSI-RS indices와 known CSI-RS symbols를 생성한다.
-6. 수신 grid에서 같은 indices의 symbols를 추출한다.
-7. `H_CSIRS = Y_CSIRS ./ X_CSIRS`로 sparse LS CSI를 계산한다.
-8. port별, receive-channel별 complex CSI를 저장한다.
-9. CSI-RS sparse grid magnitude/phase figure를 추가한다.
-10. 반복 측정에서 CSI-RS reference count, mean magnitude, phase stability를 summary에 추가한다.
+1. run2 receiver가 frame/slot timing과 common OFDM grid를 복구한다.
+2. `nrCSIRSConfig`로 TRS/NZP CSI-RS 후보 resource를 구성한다.
+3. `nrCSIRSIndices`로 후보 RE 위치를 계산한다.
+4. `nrCSIRS`로 known CSI-RS reference symbol을 생성한다.
+5. 수신 grid에서 같은 RE의 `Y_CSIRS`를 추출한다.
+6. `H_CSIRS = Y_CSIRS ./ X_CSIRS`로 sparse LS CSI를 계산한다.
+7. `nrChannelEstimate`도 같은 candidate RE로 실행해 noise/channel-estimate metadata를 남긴다.
+8. 결과를 `recovery.csi.csirsCandidate`에 저장한다.
 ```
 
 구조는 다음과 같은 형태가 된다.
@@ -1134,7 +1139,13 @@ CSI-RS configuration을 확보했다면 구현 방향은 현재 DM-RS CSI와 거
 ```matlab
 % Pseudocode. Exact object/property names should follow the MATLAB release.
 csirs = nrCSIRSConfig;
-csirs = applyProjectCsirsConfig(csirs,cfg.csirs);
+csirs.CSIRSType = {"nzp","nzp"};
+csirs.CSIRSPeriod = {[40 selectedSlotOffset],[40 selectedSlotOffset]};
+csirs.RowNumber = [1 1];
+csirs.Density = {"three","three"};
+csirs.SymbolLocations = {6,10};
+csirs.SubcarrierLocations = {selectedSubcarrierLocation,selectedSubcarrierLocation};
+csirs.NID = ncellid;
 
 csirsIndices = nrCSIRSIndices(carrier,csirs);
 csirsSymbols = nrCSIRS(carrier,csirs);
@@ -1143,18 +1154,20 @@ csirsRx = nrExtractResources(csirsIndices,rxGrid);
 csirsLsEstimate = csirsRx ./ csirsSymbols;
 ```
 
-저장 구조는 기존 DM-RS CSI와 맞추는 것이 좋다.
+`selectedSlotOffset`과 `selectedSubcarrierLocation`은 CSV에서 확정되지 않았으므로 현재 구현에서 후보들을 점수화해 고른다. 따라서 이 결과는 confirmed CSI-RS가 아니라 candidate-based channel estimate다.
+
+저장 구조는 기존 DM-RS CSI와 맞췄다.
 
 ```matlab
-recovery.csi.csirsLs.resources(resourceIdx).source = "NZP CSI-RS";
-recovery.csi.csirsLs.resources(resourceIdx).config = cfg.csirs(resourceIdx);
-recovery.csi.csirsLs.resources(resourceIdx).indices = csirsIndices;
-recovery.csi.csirsLs.resources(resourceIdx).rxSymbols = csirsRx;
-recovery.csi.csirsLs.resources(resourceIdx).txSymbols = csirsSymbols;
-recovery.csi.csirsLs.resources(resourceIdx).lsEstimate = csirsLsEstimate;
-recovery.csi.csirsLs.resources(resourceIdx).sparseGrid = csirsSparseGrid;
-recovery.csi.csirsLs.resources(resourceIdx).referenceMask = csirsMask;
-recovery.csi.csirsLs.resources(resourceIdx).validRefReCount = numel(csirsLsEstimate);
+recovery.csi.csirsCandidate.source
+recovery.csi.csirsCandidate.assumptions
+recovery.csi.csirsCandidate.csirs
+recovery.csi.csirsCandidate.rxSymbols
+recovery.csi.csirsCandidate.txSymbols
+recovery.csi.csirsCandidate.lsEstimate
+recovery.csi.csirsCandidate.sparseGrid
+recovery.csi.csirsCandidate.referenceMask
+recovery.csi.csirsCandidate.validRefReCount
 ```
 
 ### 16.3 실제로 다음에 해야 할 일
@@ -1167,16 +1180,16 @@ CSI-RS를 목표로 한다면 다음 순서로 진행하는 것이 가장 현실
 3. configuration에 periodicity와 slot offset이 있으면 capture duration을 그 주기보다 충분히 길게 설정한다.
 4. CSI-RS resource가 현재 sample rate/capture bandwidth 안에 들어오는지 계산한다.
 5. 들어오지 않으면 B210으로는 해당 CSI-RS를 볼 수 없으므로 center frequency/sample rate/capture 장비 조건을 바꿔야 한다.
-6. 들어오면 `run2`의 SIB1 recovery 이후 common grid에서 CSI-RS slot을 잘라 LS CSI를 계산한다.
+6. 들어오면 `run2`의 CSI-RS 후보 결과와 비교하고, 가정값을 confirmed config로 바꾼다.
 7. DM-RS CSI와 CSI-RS CSI의 magnitude/phase를 비교해 같은 channel trend를 보이는지 검증한다.
 ```
 
-만약 gNB 설정을 받을 수 없다면, 당장 해야 할 일은 CSI-RS blind search가 아니라 DM-RS CSI 반복 측정이다. 현재 pipeline은 PBCH DM-RS와 SIB1 PDSCH DM-RS를 이미 안정적으로 복구하므로, 위치/시간/안테나/gain 조건을 바꿔가며 같은 방식으로 반복 측정하는 것이 더 방어 가능한 결과다.
+만약 gNB 설정을 받을 수 없다면, `csirsCandidate`는 계속 hypothesis-based result로 취급해야 한다. 보고서에서는 confirmed CSI-RS extraction이라고 쓰지 말고, TRS/NZP CSI-RS candidate-based channel estimate라고 쓴다.
 
 ### 16.4 보고서에 쓸 수 있는 정리 문장
 
 현재 단계의 정확한 표현은 다음이다.
 
 ```text
-본 프로젝트에서는 현재 gNB의 CSI-RS resource configuration을 확보하지 못했기 때문에 CSI-RS 기반 CSI는 아직 추출하지 않았다. 대신 MIB/SIB1 recovery 과정에서 위치와 sequence가 확정되는 PBCH DM-RS 및 SIB1 PDSCH DM-RS를 이용해 sparse LS CSI를 계산했다. 향후 CSI-RS resource mapping, periodicity, slot offset, scrambling ID, port configuration을 확보하면 동일한 `H = Y/X` 구조로 CSI-RS 기반 CSI 추출을 추가할 수 있다.
+본 프로젝트에서는 MIB/SIB1 recovery 과정에서 위치와 sequence가 확정되는 PBCH DM-RS 및 SIB1 PDSCH DM-RS를 이용해 sparse LS CSI를 계산했다. 또한 DU CSV에서 확인한 TRS/NZP CSI-RS 후보 정보와 표준 TRS 가정을 기반으로 `nrCSIRSConfig`를 구성하고, 같은 `H = Y/X` 방식으로 CSI-RS 후보 RE의 complex channel coefficient를 추출했다. 단, exact CSI-RS resource mapping이 아직 확정되지 않았으므로 이 결과는 confirmed CSI-RS가 아니라 hypothesis-based candidate CSI로 해석한다.
 ```

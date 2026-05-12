@@ -38,6 +38,9 @@ end
 figureFormat = string(getOption(options,"figureFormat","pdf"));
 figurePrefix = string(getOption(options,"figurePrefix","mib_sib1"));
 plotCsiFiguresEnabled = getOption(options,"plotCsiFigures",enablePlots || saveFigures);
+extractCsirsCandidate = getOption(options,"extractCsirsCandidate",true);
+csirsGridMode = string(getOption(options,"csirsGridMode","visible"));
+csirsCarrierNSizeGrid = getOption(options,"csirsCarrierNSizeGrid",273);
 
 recovery = struct();
 recovery.captureFile = captureFile;
@@ -277,6 +280,18 @@ if exist("rxSlotGrid","var") && exist("pdschDmrsIndices","var") && exist("pdschD
     end
 end
 
+if extractCsirsCandidate && exist("rxGrid","var") && exist("ncellid","var") && ...
+        exist("scsCommon","var") && exist("initialSystemInfo","var")
+    csirsRxGrid = rxGrid;
+    csirsGridInfo = defaultCsirsGridInfo(csirsGridMode,rxGrid);
+    if exist("rxWave","var") && exist("sampleRate","var") && exist("fPhaseComp","var")
+        [csirsRxGrid,csirsGridInfo] = buildCsirsExtractionGrid(rxGrid,rxWave, ...
+            sampleRate,fPhaseComp,scsCommon,csirsGridMode,csirsCarrierNSizeGrid);
+    end
+    recovery.csi.csirsCandidate = extractCsirsCandidateCsi(csirsRxGrid,ncellid,scsCommon,initialSystemInfo);
+    recovery.csi.csirsCandidate.extractionGrid = csirsGridInfo;
+end
+
 if plotCsiFiguresEnabled
     csiFigureHandles = plotCsiFigures(recovery.csi);
     if saveFigures && ~deferFigureSave
@@ -338,6 +353,45 @@ for idx = 1:numel(figures)
         close(figures(idx));
     end
 end
+end
+
+function [csirsGrid,gridInfo] = buildCsirsExtractionGrid(visibleGrid,rxWave,sampleRate,fPhaseComp,scsCommon,gridMode,carrierNSizeGrid)
+csirsGrid = visibleGrid;
+gridInfo = defaultCsirsGridInfo(gridMode,visibleGrid);
+gridMode = lower(string(gridMode));
+carrierNSizeGrid = double(carrierNSizeGrid);
+
+if ~any(gridMode == ["carrier" "full" "fullcarrier"])
+    return;
+end
+
+requiredSampleRate = carrierNSizeGrid*12*scsCommon*1e3;
+gridInfo.requestedNSizeGrid = carrierNSizeGrid;
+gridInfo.requiredSampleRate = requiredSampleRate;
+if sampleRate < requiredSampleRate
+    gridInfo.source = "visible_grid_fallback";
+    gridInfo.fallbackReason = sprintf("Sample rate %.2f MS/s is below %.2f MS/s required for %d RB at %d kHz SCS.", ...
+        sampleRate/1e6,requiredSampleRate/1e6,carrierNSizeGrid,scsCommon);
+    return;
+end
+
+csirsGrid = nrOFDMDemodulate(rxWave,carrierNSizeGrid,scsCommon,0, ...
+    "SampleRate",sampleRate,"CarrierFrequency",fPhaseComp);
+gridInfo.source = "carrier_grid";
+gridInfo.appliedNSizeGrid = carrierNSizeGrid;
+gridInfo.gridSize = size(csirsGrid);
+gridInfo.fallbackReason = "";
+end
+
+function gridInfo = defaultCsirsGridInfo(gridMode,visibleGrid)
+gridInfo = struct();
+gridInfo.requestedMode = string(gridMode);
+gridInfo.source = "visible_grid";
+gridInfo.requestedNSizeGrid = NaN;
+gridInfo.appliedNSizeGrid = floor(size(visibleGrid,1)/12);
+gridInfo.requiredSampleRate = NaN;
+gridInfo.gridSize = size(visibleGrid);
+gridInfo.fallbackReason = "";
 end
 
 function value = getOption(options, name, defaultValue)

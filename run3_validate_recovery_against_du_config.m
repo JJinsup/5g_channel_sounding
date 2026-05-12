@@ -44,6 +44,7 @@ end
 du = loadDuFacts(configDir,cellIdentity);
 checks = buildValidationChecks(recovery,du);
 validationTable = struct2table(checks);
+csirsCandidateSummary = summarizeCsirsCandidate(recovery);
 
 validation = struct();
 validation.recoveryFile = recoveryFile;
@@ -51,6 +52,7 @@ validation.configDir = configDir;
 validation.cellIdentity = cellIdentity;
 validation.duFacts = du;
 validation.table = validationTable;
+validation.csirsCandidateSummary = csirsCandidateSummary;
 validation.summary = summarizeChecks(validationTable);
 validation.outputFiles = strings(0,1);
 
@@ -236,16 +238,124 @@ checks = addCheck(checks,"PDSCH DM-RS CSI reference count", ...
     recovery.csi.pdschDmrsLs.validRefReCount > 0, ...
     "MATLAB recovery result","PDSCH DM-RS sparse CSI should be present when SIB1 succeeds.");
 
-checks = addInfo(checks,"TRS / NZP CSI-RS candidate", ...
-    "period=40 slots, symbols=[6 10], freq separation=3", ...
-    sprintf("NID=%d, NSizeGrid=%d, RBOffset=0, NumRB=%d are current assumptions", ...
-    du.physicalCellId,du.nSizeGrid,du.nSizeGrid), ...
-    du.sources.trs);
+checks = addCsirsValidationChecks(checks,recovery,du);
 
 checks = addInfo(checks,"Known CSV limitation", ...
     "DCI payload is scheduler-dynamic; exact CSI-RS resource mapping is not fully exposed", ...
     "Use CRC/SIB1 success for DCI chain and hypothesis search for TRS/CSI-RS", ...
     "DU CSV review");
+end
+
+function checks = addCsirsValidationChecks(checks, recovery, du)
+if ~isfield(recovery,"csi") || ~isfield(recovery.csi,"csirsCandidate")
+    checks = addInfo(checks,"TRS / NZP CSI-RS candidate", ...
+        "candidate extraction info", ...
+        "missing: run2 did not store recovery.csi.csirsCandidate", ...
+        "MATLAB recovery result");
+    return;
+end
+
+candidate = recovery.csi.csirsCandidate;
+status = getStructField(candidate,"status","");
+validRefReCount = getStructField(candidate,"validRefReCount",0);
+assumptions = getStructField(candidate,"assumptions",struct());
+
+checks = addInfo(checks,"TRS / NZP CSI-RS candidate status", ...
+    "candidate extraction status; not confirmed CSI-RS validation", ...
+    sprintf("status=%s, refs=%d",string(status),validRefReCount), ...
+    "MATLAB recovery result");
+
+actualPeriodicity = getStructField(assumptions,"periodicitySlots",NaN);
+checks = addInfo(checks,"CSI-RS periodicity candidate vs DU CSV", ...
+    sprintf("DU csi-rs-periodicity=%s -> %s slots",du.csiRsPeriodicity,valueToString(du.csiRsPeriodicitySlots)), ...
+    sprintf("candidate periodicitySlots=%s",valueToString(actualPeriodicity)), ...
+    du.sources.csiRs);
+
+checks = addInfo(checks,"TRS periodicity candidate vs DU CSV", ...
+    sprintf("DU trs-periodicity=%s -> %s slots",du.trsPeriodicity,valueToString(du.trsPeriodicitySlots)), ...
+    sprintf("candidate periodicitySlots=%s",valueToString(actualPeriodicity)), ...
+    du.sources.trs);
+
+actualSymbols = getStructField(assumptions,"symbolLocations",[]);
+checks = addInfo(checks,"TRS symbol locations candidate vs DU CSV", ...
+    sprintf("DU trs-symbol-location=%s -> %s",du.trsSymbolLocation,valueToString(du.trsSymbolLocations)), ...
+    sprintf("candidate symbolLocations=%s",valueToString(actualSymbols)), ...
+    du.sources.trs);
+
+actualDensity = string(getStructField(assumptions,"density",""));
+checks = addInfo(checks,"TRS frequency separation candidate mapping", ...
+    sprintf("trs-freq-separation=%d",du.trsFreqSeparationValue), ...
+    sprintf("density=%s",actualDensity), ...
+    du.sources.trs);
+
+actualPowerOffset = getStructField(assumptions,"powerOffsetDb",NaN);
+checks = addInfo(checks,"CSI-RS power offset candidate vs DU CSV", ...
+    sprintf("DU csi-rs-power-control-offset=%s -> %s dB",du.csiRsPowerOffset,valueToString(du.csiRsPowerOffsetDb)), ...
+    sprintf("candidate powerOffsetDb=%s",valueToString(actualPowerOffset)), ...
+    du.sources.csiRs);
+
+actualNid = getStructField(assumptions,"NID",NaN);
+checks = addInfo(checks,"CSI-RS candidate NID assumption", ...
+    sprintf("detected PCI=%d; CSV does not expose exact CSI-RS scrambling ID",du.physicalCellId), ...
+    sprintf("candidate NID=%s",valueToString(actualNid)), ...
+    "MATLAB recovery result");
+
+actualRbOffset = getStructField(assumptions,"RBOffset",NaN);
+checks = addInfo(checks,"CSI-RS candidate RBOffset assumption", ...
+    "BWP CSV shows CBW offset 0; exact CSI-RS RBOffset is not exposed", ...
+    sprintf("candidate RBOffset=%s",valueToString(actualRbOffset)), ...
+    "MATLAB recovery result");
+
+actualNSizeGrid = getStructField(assumptions,"appliedCarrierNSizeGrid",NaN);
+checks = addInfo(checks,"CSI-RS candidate grid size vs DU carrier", ...
+    sprintf("DU 100 MHz / 30 kHz carrier grid=%s RB",valueToString(du.nSizeGrid)), ...
+    sprintf("candidate appliedCarrierNSizeGrid=%s RB",valueToString(actualNSizeGrid)), ...
+    du.sources.cellPhysical);
+
+checks = addInfo(checks,"CSI-RS exact mapping still unverified", ...
+    "row/ports/CDM/subcarrierLocation/slotOffset/scramblingID from gNB config", ...
+    sprintf("candidate row=%s, ports=%s, CDM=%s, slotOffset=%s, subcarrierLocation=%s", ...
+    valueToString(getStructField(assumptions,"rowNumber",NaN)), ...
+    valueToString(getStructField(assumptions,"numPorts",NaN)), ...
+    valueToString(getStructField(assumptions,"cdmType","")), ...
+    valueToString(getStructField(assumptions,"slotOffset",NaN)), ...
+    valueToString(getStructField(assumptions,"subcarrierLocations",NaN))), ...
+    "DU CSV limitation");
+end
+
+function summary = summarizeCsirsCandidate(recovery)
+summary = struct();
+summary.available = false;
+summary.status = "";
+summary.validRefReCount = 0;
+summary.selection = "";
+summary.slotOffset = NaN;
+summary.subcarrierLocation = NaN;
+summary.relativePowerDb = NaN;
+summary.meanAbsLs = NaN;
+summary.activeSlots = [];
+summary.note = "CSI-RS candidate scan only; not confirmed gNB CSI-RS configuration.";
+
+if ~isfield(recovery,"csi") || ~isfield(recovery.csi,"csirsCandidate")
+    return;
+end
+
+candidate = recovery.csi.csirsCandidate;
+summary.available = true;
+summary.status = string(getStructField(candidate,"status",""));
+summary.validRefReCount = getStructField(candidate,"validRefReCount",0);
+summary.selection = string(getStructField(candidate,"selection",""));
+scanResults = getStructField(candidate,"scanResults",[]);
+if isempty(scanResults)
+    return;
+end
+
+top = scanResults(1);
+summary.slotOffset = getStructField(top,"slotOffset",NaN);
+summary.subcarrierLocation = getStructField(top,"subcarrierLocation",NaN);
+summary.relativePowerDb = getStructField(top,"relativePowerDb",NaN);
+summary.meanAbsLs = getStructField(top,"meanAbsLs",NaN);
+summary.activeSlots = getStructField(top,"activeSlots",[]);
 end
 
 function facts = loadCaptureFacts(recovery)
@@ -354,6 +464,11 @@ du.csiRsPowerOffset = rowValue(csiRs,"csi-rs-power-control-offset");
 du.trsPeriodicity = rowValue(trs,"trs-periodicity");
 du.trsSymbolLocation = rowValue(trs,"trs-symbol-location");
 du.trsFreqSeparation = rowValue(trs,"trs-freq-separation");
+du.csiRsPeriodicitySlots = parseFirstNumber(du.csiRsPeriodicity);
+du.csiRsPowerOffsetDb = parseFirstNumber(du.csiRsPowerOffset);
+du.trsPeriodicitySlots = parseFirstNumber(du.trsPeriodicity);
+du.trsSymbolLocations = parseIntegerList(du.trsSymbolLocation);
+du.trsFreqSeparationValue = parseFirstNumber(du.trsFreqSeparation);
 
 du.sib1Broadcast = rowValue(sibInfo,"sib1-broadcast");
 du.siWindowLength = rowValue(sibInfo,"si-window-length");
@@ -531,7 +646,17 @@ end
 source = string(name + ext);
 nodePath = rowValue(row,"Node Path");
 if strlength(nodePath) > 0
-    source = source + " | " + nodePath;
+    source = source + ":" + shortNodePath(nodePath);
+end
+end
+
+function shortName = shortNodePath(nodePath)
+parts = split(string(nodePath),"/");
+parts = parts(strlength(parts) > 0);
+if isempty(parts)
+    shortName = "";
+else
+    shortName = parts(end);
 end
 end
 
@@ -542,6 +667,15 @@ if isempty(token)
 else
     value = str2double(token);
 end
+end
+
+function values = parseIntegerList(textValue)
+tokens = regexp(char(textValue),'\d+','match');
+if isempty(tokens)
+    values = [];
+    return;
+end
+values = str2double(tokens);
 end
 
 function value = parseMaxNrOfSsb(textValue)
@@ -629,6 +763,13 @@ else
 end
 end
 
+function value = getStructField(s, fieldName, defaultValue)
+value = defaultValue;
+if isstruct(s) && isfield(s,fieldName)
+    value = s.(fieldName);
+end
+end
+
 function summary = summarizeChecks(validationTable)
 summary = struct();
 summary.pass = sum(validationTable.Status == "PASS");
@@ -645,10 +786,31 @@ fprintf("PASS: %d, FAIL: %d, INFO: %d\n\n", ...
     validation.summary.pass,validation.summary.fail,validation.summary.info);
 
 disp(validation.table(:,["Status","Check","Expected","Actual"]));
+printCsirsCandidateSummary(validation.csirsCandidateSummary);
 
 if validation.summary.fail > 0
     fprintf("\nFailed checks:\n");
     failed = validation.table(validation.table.Status == "FAIL",:);
     disp(failed(:,["Check","Expected","Actual","Source","Note"]));
 end
+end
+
+function printCsirsCandidateSummary(summary)
+fprintf("\n=== CSI-RS Candidate Scan Summary ===\n");
+if ~summary.available
+    fprintf("No recovery.csi.csirsCandidate found.\n");
+    return;
+end
+
+fprintf("Status: %s\n",summary.status);
+fprintf("Refs: %d\n",summary.validRefReCount);
+fprintf("Best candidate: slotOffset=%s, subcarrierLocation=%s\n", ...
+    valueToString(summary.slotOffset),valueToString(summary.subcarrierLocation));
+fprintf("Score: relativePower=%s dB, meanAbsLs=%s\n", ...
+    valueToString(summary.relativePowerDb),valueToString(summary.meanAbsLs));
+fprintf("Active slots: %s\n",valueToString(summary.activeSlots));
+if strlength(summary.selection) > 0
+    fprintf("Selection: %s\n",summary.selection);
+end
+fprintf("Note: %s\n",summary.note);
 end

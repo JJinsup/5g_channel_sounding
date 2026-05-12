@@ -41,7 +41,8 @@ NumRB = 273
 Density = 3
 SymbolLocations = [6 10]
 Periodicity = 40 slots
-Slot offset = 6
+Slot offset = unresolved, scan 0:39
+Subcarrier location = unresolved, scan supported row-1 candidates
 Port 수 = 1 우선
 CDM type = noCDM 우선
 BWP = full carrier bandwidth
@@ -64,4 +65,14 @@ carrier.NSizeGrid = 273;
 
 ## 해석 기준
 
-현재 설정은 `DU CSV에서 확정된 TRS/CSI-RS 시간/대역 후보 + 표준 TRS 가정`이다. 따라서 첫 구현 단계에서는 이를 `confirmed CSI-RS extraction`이 아니라 `TRS/NZP CSI-RS hypothesis-based detection`으로 취급한다.
+현재 설정은 `DU CSV에서 확정된 TRS/CSI-RS 시간/대역 후보 + 표준 TRS 가정`이다. 따라서 run2에서 생성되는 `recovery.csi.csirsCandidate`는 `confirmed CSI-RS extraction`이 아니라 `TRS/NZP CSI-RS hypothesis-based channel estimate`로 취급한다.
+
+후보 추출 결과를 볼 때 확인할 값:
+
+```text
+Status: capture/profile dependent
+Actual selected slot offset: check recovery.csi.csirsCandidate.assumptions.slotOffset
+Actual selected subcarrier location: check recovery.csi.csirsCandidate.assumptions.subcarrierLocation
+Valid sparse LS CSI samples: check recovery.csi.csirsCandidate.validRefReCount
+Figure title also reports the current reference RE count.
+```

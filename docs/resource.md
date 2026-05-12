@@ -23,22 +23,63 @@
 
 ## Known Environment
 
+`5g_NW_config/*.csv`를 기준으로 확인한 실제 특화망 값과, 캡처/receiver에서 확인한 값을 분리해서 기록한다.
+
 ```text
 Network: 5G Private Network
 Deployment: Rel-16 based
 Band: n79
-RU frequency range: 4720 MHz - 4920 MHz
 Channel bandwidth: 100 MHz
-Primary PLMN: 450-40
-Primary ARFCN: 717216
-Approximate center frequency: 4758.24 MHz
-GSCN: 8720
-PCI candidates: 1002, 1003, 1004
+UE-observed / SSB ARFCN: 717216
+UE-observed / SSB frequency: 4758.24 MHz
+CSV cell-physical nr-arfcn-dl/ul: 718000
+CSV cell-physical frequency equivalent: 4770.00 MHz
+Nominal 30 kHz carrier grid: 273 RB
+CSV ssb-loc-arfcn: 717216
+SSB / GSCN capture frequency used by run1: 4758.24 MHz
+GSCN used by run1: 8720
+Primary PLMN used by project: 450-40
+CSV cell IDs / PCIs: 1001, 1002, 1003, 1004
+Observed PCI candidates near current capture: 1002, 1003, 1004
 Confirmed PCI / Cell ID: 1003
 Confirmed SSB index: 1
 Confirmed common SCS: 30 kHz
 Confirmed k_SSB: 20
 ```
+
+`717216` is the value observed from the UE page and also appears in `ssb_config.csv` as `ssb-loc-arfcn`. `718000` appears separately in `cell-physical-conf-idle.csv` as `nr-arfcn-dl` and `nr-arfcn-ul`. Treat these as two distinct DU/export fields until the vendor meaning is confirmed; do not replace the UE-observed/tuned SSB frequency with `4770.00 MHz`.
+
+CSV-backed radio details:
+
+```text
+Cell 1003 label: 1003-ORU3-미래관4층EPS실(남자화장실)
+DL/UL SCS: 30 kHz
+SSB: 30 kHz, max 8 SSBs, tx SSB count 1, position bitmap 01000000
+SSB periodicity: 20 ms
+SSB half frame / duration: second half / sf2
+SSB frequency offset field: 8
+RMSI CORESET index: 4
+Initial/common DL BWP: CBW, offset 0
+TDD basic config: tdd-configuration-13
+TDD cell config: fr1-tdd-64-f1-6-4-4-f2-10-4-0
+DL antenna count: 4tx
+DL DM-RS idle config: Type A pos2, additional pos1, type1, max length len1
+PDCCH: non-interleaved CCE-REG mapping, AL adaptation, DMRS scrambling ID off
+SIB1: broadcast use, repetition 20 ms
+SI window: slot40
+```
+
+TRS/NZP CSI-RS details confirmed by CSV are only partial:
+
+```text
+TRS periodicity: 40 slots
+TRS OFDM symbols: 6, 10
+TRS frequency separation: 3
+CSI-RS periodicity: 40 slots
+CSI-RS power control offset: +6 dB
+```
+
+The exact CSI-RS resource mapping is still not confirmed by the CSV files: scrambling ID, row number, port count, CDM type, exact RB offset/NumRB, frequency-domain allocation, and slot offset must still be treated as candidate/hypothesis values.
 
 ## MATLAB Requirements
 
@@ -142,15 +183,15 @@ configuredDataFiles = "outputs/1_IQcapture/61.44_260507.mat";
 
 Saved figure groups:
 
-- `figures.pdf`: MathWorks receiver-flow figures plus project-added DM-RS CSI figures as one multipage PDF
+- `figures.pdf`: MathWorks receiver-flow figures plus project-added DM-RS/CSI-RS-candidate CSI figures as one multipage PDF
 - `mib_sib1_*.png` and `csi_*.png`: separate files when `"FigureFormat","png"` is selected
 
 CSI figures show:
 
 - sparse grid magnitude in dB
 - sparse grid phase in radians
-- magnitude over DM-RS reference RE order
-- unwrapped phase over DM-RS reference RE order
+- magnitude over reference RE order
+- unwrapped phase over reference RE order
 
 New SDR captures are named:
 
@@ -162,15 +203,18 @@ GSCN, band, gain, and channel mapping remain inside the MAT file metadata.
 
 ## CSI Definition
 
-The project currently stores sparse LS CSI from DM-RS reference signals.
+The project currently stores sparse LS CSI from DM-RS reference signals and a hypothesis-based TRS/NZP CSI-RS candidate.
 
 ```matlab
 H_DMRS = Y_DMRS ./ X_DMRS;
+H_CSIRS = Y_CSIRS ./ X_CSIRS;
 ```
 
 `Y_DMRS` is extracted from the received resource grid at the official example's DM-RS indices.
 
 `X_DMRS` is generated using the official example's selected DM-RS configuration.
+
+`Y_CSIRS` and `X_CSIRS` are generated from the candidate `nrCSIRSConfig` assumptions in `docs/trs_nzp_csirs_candidate.md`. Treat this as candidate extraction until exact gNB CSI-RS resource mapping is confirmed.
 
 ### PBCH DM-RS CSI
 
@@ -232,6 +276,37 @@ recovery.csi.pdschDmrsLs.carrier
 recovery.csi.pdschDmrsLs.pdsch
 ```
 
+### TRS/NZP CSI-RS Candidate CSI
+
+Stored at:
+
+```matlab
+recovery.csi.csirsCandidate
+```
+
+Meaning:
+
+- source: TRS/NZP CSI-RS candidate
+- available after run2 builds the common OFDM grid
+- uses `nrCSIRSConfig`, `nrCSIRSIndices`, `nrCSIRS`, and `nrChannelEstimate` following the MathWorks CSI-RS example flow
+- CSV-confirmed values: symbols `[6 10]`, period 40 slots, power offset +6 dB, full-CBW BWP
+- current assumptions: row 1, density `three`, NID = detected PCI 1003
+- current scan: unresolved slot offset and subcarrier location candidates are scored before extraction
+- candidate RE count is run/profile dependent; check `recovery.csi.csirsCandidate.validRefReCount` and the figure title for the actual result
+
+Important fields:
+
+```matlab
+recovery.csi.csirsCandidate.assumptions
+recovery.csi.csirsCandidate.csirs
+recovery.csi.csirsCandidate.txSymbols
+recovery.csi.csirsCandidate.rxSymbols
+recovery.csi.csirsCandidate.lsEstimate
+recovery.csi.csirsCandidate.sparseGrid
+recovery.csi.csirsCandidate.referenceMask
+recovery.csi.csirsCandidate.activeSlots
+```
+
 ## Verified Captures
 
 Current saved captures under `outputs/1_IQcapture/`:
@@ -267,14 +342,15 @@ Batch verification result:
   SIB1 CRC: 0
   PBCH DM-RS CSI refs: 144
   PDSCH DM-RS CSI refs: 612
+  TRS/NZP CSI-RS candidate CSI refs: run/profile dependent
 ```
 
 ## Interpretation Rules
 
 - Treat PBCH DM-RS CSI as the default robust CSI product.
 - Treat SIB1 PDSCH DM-RS CSI as an additional wider allocation CSI product when SIB1 recovery succeeds.
-- Do not treat current results as CSI-RS-based CSI.
-- CSI-RS extraction requires gNB CSI-RS configuration, which is not currently available in the log.
+- Treat `csirsCandidate` as hypothesis-based TRS/NZP CSI-RS candidate CSI, not confirmed gNB CSI-RS until exact resource mapping is verified.
+- Confirmed CSI-RS extraction still requires exact gNB CSI-RS resource configuration.
 - Do not reintroduce CIR/PDP unless explicitly requested. Current project scope is CSI-only.
 
 ## Related Files
@@ -286,4 +362,5 @@ run2_recover_mib_sib1_with_figures.m
 run2_recover_mib_sib1_from_data.m
 src/NRCellSearchMIBAndSIB1RecoveryExample.m
 src/recoverMibSib1FromCapture.m
+src/extractCsirsCandidateCsi.m
 ```

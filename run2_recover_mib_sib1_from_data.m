@@ -9,14 +9,19 @@ function batchResult = run2_recover_mib_sib1_from_data(varargin)
 repoRoot = fileparts(mfilename("fullpath"));
 addpath(fullfile(repoRoot,"config"));
 addpath(fullfile(repoRoot,"src"));
-cfg = default_config(repoRoot);
 
 %% User Settings
+configuredConfigFile = "config/b210_config.m";
 % Leave empty to analyze every MAT file under outputs/1_IQcapture/.
 configuredDataFiles = "outputs/1_IQcapture/61.44_260507.mat";
 configuredSaveFigures = true;
 
 [dataFiles,runOptions] = parseInputs(varargin{:});
+configFile = runOptions.configFile;
+if strlength(configFile) == 0
+    configFile = configuredConfigFile;
+end
+cfg = load_project_config(repoRoot,configFile);
 if isempty(dataFiles) && ~isempty(configuredDataFiles)
     dataFiles = configuredDataFiles;
 end
@@ -37,6 +42,9 @@ opts = struct();
 opts.enablePlots = cfg.receiver.enablePlots || runOptions.saveFigures;
 opts.closeFiguresAfterRun = runOptions.closeFiguresAfterRun;
 opts.minChannelBW = cfg.receiver.minChannelBW;
+opts.extractCsirsCandidate = cfg.receiver.extractCsirsCandidate;
+opts.csirsGridMode = cfg.receiver.csirsGridMode;
+opts.csirsCarrierNSizeGrid = cfg.receiver.csirsCarrierNSizeGrid;
 opts.saveResult = true;
 opts.outputDir = cfg.paths.processedRoot;
 opts.saveFigures = runOptions.saveFigures;
@@ -78,7 +86,8 @@ batchResult.dataFiles = dataFiles;
 fprintf("\n=== MIB/SIB1 Recovery Batch Summary ===\n");
 disp(summaryTable(:,["captureFile","status","success","sampleRateMsps", ...
     "ncellid","ssbIndex","bchCRC","dciCRC","sib1CRC", ...
-    "pbchDmrsCsiRefs","pdschDmrsCsiRefs","figureFileCount","resultFile"]));
+    "pbchDmrsCsiRefs","pdschDmrsCsiRefs","csirsCandidateCsiRefs", ...
+    "figureFileCount","resultFile"]));
 fprintf("Saved batch summary: %s\n",outputPath);
 end
 
@@ -89,13 +98,15 @@ runOptions.saveFigures = false;
 runOptions.figureDir = "";
 runOptions.figureFormat = "pdf";
 runOptions.closeFiguresAfterRun = true;
+runOptions.configFile = "";
 
 if isempty(varargin)
     return;
 end
 
 optionNames = ["savefigures" "savefigure" "save" "figuredir" ...
-    "outputfiguredir" "figureformat" "format" "closefiguresafterrun"];
+    "outputfiguredir" "figureformat" "format" "closefiguresafterrun" ...
+    "config" "configfile" "profile"];
 firstArg = lower(string(varargin{1}));
 if ~any(firstArg == optionNames)
     dataFiles = string(varargin{1});
@@ -119,6 +130,8 @@ for idx = 1:2:numel(varargin)
             runOptions.figureFormat = string(value);
         case "closefiguresafterrun"
             runOptions.closeFiguresAfterRun = parseLogical(value);
+        case {"config","configfile","profile"}
+            runOptions.configFile = string(value);
         otherwise
             error("run2_recover_mib_sib1_from_data:UnknownOption", ...
                 "Unknown option: %s.",name);
@@ -168,6 +181,7 @@ row.pdschEVMrmsPercent = NaN;
 row.sib1CRC = NaN;
 row.pbchDmrsCsiRefs = NaN;
 row.pdschDmrsCsiRefs = NaN;
+row.csirsCandidateCsiRefs = NaN;
 row.figureFileCount = 0;
 row.resultFile = recovery.outputPath;
 
@@ -218,6 +232,9 @@ if isfield(recovery,"csi")
     end
     if isfield(recovery.csi,"pdschDmrsLs")
         row.pdschDmrsCsiRefs = recovery.csi.pdschDmrsLs.validRefReCount;
+    end
+    if isfield(recovery.csi,"csirsCandidate")
+        row.csirsCandidateCsiRefs = recovery.csi.csirsCandidate.validRefReCount;
     end
 end
 if isfield(recovery,"figureFiles")

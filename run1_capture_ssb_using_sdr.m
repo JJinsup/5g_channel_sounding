@@ -12,11 +12,19 @@ repoRoot = fileparts(mfilename("fullpath"));
 addpath(fullfile(repoRoot,"config"));
 addpath(fullfile(repoRoot,"src"));
 
-[overrides,runOptions] = parseInputs(varargin{:});
-cfg = default_config(repoRoot,overrides);
+%% User Settings
+configuredConfigFile = "config/b210_config.m";
+
+[configFile,overrides,runOptions] = parseInputs(varargin{:});
+if strlength(configFile) == 0
+    configFile = configuredConfigFile;
+end
+cfg = load_project_config(repoRoot,configFile,overrides);
 
 fprintf("=== SSB Capture Using SDR ===\n");
 fprintf("Device: %s\n",cfg.ssbCapture.deviceName);
+fprintf("Config: %s\n",configFile);
+fprintf("Device series: %s\n",cfg.radio.deviceSeries);
 fprintf("Band: %s\n",cfg.ssbCapture.band);
 fprintf("GSCN: %d\n",cfg.ssbCapture.gscn);
 fprintf("Gain: %.1f dB\n",cfg.radio.gain);
@@ -91,7 +99,8 @@ else
 end
 end
 
-function [overrides,runOptions] = parseInputs(varargin)
+function [configFile,overrides,runOptions] = parseInputs(varargin)
+configFile = "";
 overrides = struct();
 runOptions = struct();
 runOptions.saveFigures = false;
@@ -128,6 +137,8 @@ for idx = 1:2:numel(varargin)
             runOptions.figureDir = string(value);
         case {"figureformat","format"}
             runOptions.figureFormat = string(value);
+        case {"config","configfile","profile"}
+            configFile = string(value);
         case "overrides"
             overrides = value;
         otherwise

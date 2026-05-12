@@ -1,156 +1,116 @@
 # 5G Channel Sounding
 
-MATLAB 5G Toolbox 공식 예제를 기준으로, 실제 5G private network downlink 신호를 수신하고 SSB/MIB/SIB1 복구 및 DM-RS 기반 CSI를 저장하는 프로젝트입니다.
+MATLAB 5G Toolbox 공식 예제 흐름으로 실제 5G private network downlink IQ를 SDR로 캡처하고, SSB/MIB/SIB1 recovery 뒤 CSI를 저장하는 프로젝트입니다.
 
-목표는 공식 예제 흐름으로 raw IQ waveform을 캡처하고, SSB/MIB/SIB1 복구를 수행한 뒤, PBCH DM-RS 및 SIB1 PDSCH DM-RS 기반 CSI를 얻는 것입니다.
+현재 저장하는 CSI는 PBCH DM-RS, SIB1 PDSCH DM-RS, 그리고 TRS/NZP CSI-RS 후보 기반 sparse LS CSI입니다. CSI-RS 결과는 아직 gNB의 exact CSI-RS resource mapping이 확인되지 않았으므로 confirmed CSI-RS가 아니라 candidate result로 해석해야 합니다.
 
-## Quick Start
+## Requirements
 
-0. MATLAB에서 프로젝트 폴더로 이동합니다.
+- MATLAB
+- 5G Toolbox
+- Communications Toolbox
+- Communications Toolbox Support Package for USRP Radio
+- Signal Processing Toolbox
+
+## Before Running
+
+먼저 장비 profile을 고릅니다.
+
+```text
+config/b210_config.m
+config/x310_config.m
+```
+
+X310을 쓸 때는 [config/x310_config.m](config/x310_config.m)을 확인하세요.
+
+```matlab
+overrides.radio.serialNum = '';   % empty: first discovered X310 IP
+overrides.radio.gain = 25;
+overrides.radio.channelMapping = 1;
+overrides.ssbCapture.sampleRate = 184.32e6;
+```
+
+자동 discovery가 안 되거나 X310이 여러 대면 `overrides.radio.serialNum`에 X310 IP 주소를 넣으세요. 이름은 기존 코드 호환 때문에 `serialNum`이지만, X300/X310에서는 `DeviceAddress`/`IPAddress`로 사용됩니다.
+
+현재 튜닝 기준:
+
+```text
+Band: n79
+GSCN: 8720
+UE-observed / SSB ARFCN: 717216
+SSB / GSCN capture frequency: 4758.24 MHz
+CSV cell-physical nr-arfcn-dl/ul: 718000
+Known PCI: 1003
+Channel bandwidth: 100 MHz deployment
+```
+
+`717216`은 UE 관리페이지와 `ssb_config.csv`의 SSB ARFCN입니다. `718000`은 DU CSV의 별도 `nr-arfcn-dl/ul` 값이므로 SDR 튜닝값으로 바로 바꾸지 마세요.
+
+## Run
+
+MATLAB에서 프로젝트 폴더로 이동합니다.
 
 ```matlab
 cd('/home/jinsub/channel/5g_channel_sounding')
 ```
 
-1. SSB를 SDR로 캡처하고 공식 예제와 같은 resource grid figure를 확인합니다.
+X310으로 새 캡처를 뜹니다.
 
 ```matlab
-run1_capture_ssb_using_sdr
+run1_capture_ssb_using_sdr("Config","config/x310_config.m","SaveFigures",true)
 ```
 
-figure를 파일로 저장하려면:
+B210으로 캡처하려면 profile만 바꿉니다.
 
 ```matlab
-run1_capture_ssb_using_sdr("SaveFigures",true)
+run1_capture_ssb_using_sdr("Config","config/b210_config.m","SaveFigures",true)
 ```
 
-2. 저장된 캡처로 MIB/SIB1 recovery를 figure와 함께 실행합니다.
+캡처가 끝나면 출력된 MAT 파일 경로를 run2에 넣습니다.
 
 ```matlab
-run2_recover_mib_sib1_with_figures
+run2_recover_mib_sib1_from_data( ...
+    "outputs/1_IQcapture/capturedWaveform_x310_YYMMDD_HHMMSS.mat", ...
+    "Config","config/x310_config.m", ...
+    "SaveFigures",true)
 ```
 
-분석할 파일을 코드에서 고정하려면 [run2_recover_mib_sib1_with_figures.m](run2_recover_mib_sib1_with_figures.m) 상단의 `configuredCaptureFile`을 수정합니다.
-
-공식 예제 figure를 저장하려면:
+기존 B210 캡처를 분석하려면:
 
 ```matlab
-run2_recover_mib_sib1_with_figures("SaveFigures",true)
+run2_recover_mib_sib1_from_data( ...
+    "outputs/1_IQcapture/61.44_260507.mat", ...
+    "Config","config/b210_config.m", ...
+    "SaveFigures",true)
 ```
 
-`outputs/1_IQcapture/*.mat` 캡처 전체를 반복 분석하고 결과를 저장합니다.
-
-```matlab
-run2_recover_mib_sib1_from_data
-```
-
-batch에서 분석할 파일 목록을 고정하려면 [run2_recover_mib_sib1_from_data.m](run2_recover_mib_sib1_from_data.m) 상단의 `configuredDataFiles`를 수정합니다.
-
-batch 분석에서도 figure 저장이 필요하면:
-
-```matlab
-run2_recover_mib_sib1_from_data("SaveFigures",true)
-```
-
-3. 복구 결과가 DU CSV 설정과 맞는지 검증합니다.
+DU CSV와 복구 결과를 비교합니다.
 
 ```matlab
 run3_validate_recovery_against_du_config
 ```
 
-## Main Outputs
-
-캡처 파일은 `outputs/1_IQcapture/`에 저장됩니다.
+## Outputs
 
 ```text
-outputs/1_IQcapture/capturedWaveform_<timestamp>.mat
+outputs/1_IQcapture/                         raw IQ capture MAT files
+outputs/2_processed/*_mib_sib1_recovery.mat  recovery and CSI results
+outputs/2_processed/figures/<capture>/        saved figures
+outputs/3_validation/                         DU config validation reports
 ```
 
-MIB/SIB1 recovery 및 CSI 결과는 `outputs/2_processed/`에 저장됩니다.
-
-```text
-outputs/2_processed/*_mib_sib1_recovery.mat
-```
-
-반복 분석 summary는 `outputs/2_processed/`, DU config validation report는 `outputs/3_validation/`에 저장됩니다.
-
-```text
-outputs/2_processed/mib_sib1_batch_*.mat
-outputs/3_validation/du_config_validation_*.mat
-outputs/3_validation/du_config_validation_*.csv
-```
-
-저장된 figure는 `outputs/2_processed/figures/` 아래에 저장됩니다.
-
-```text
-outputs/2_processed/figures/<capture-file-name>/figures.pdf
-```
-
-`SaveFigures`를 켜면 공식 예제 figure와 함께 CSI figure도 저장됩니다.
-
-```text
-figures.pdf
-```
-
-## CSI Fields
-
-Recovery 결과 파일을 로드하면 `recovery.csi` 아래에 CSI가 저장됩니다.
+CSI는 recovery MAT 파일의 `recovery.csi` 아래에 저장됩니다.
 
 ```matlab
-load('outputs/2_processed/61.44_260507_mib_sib1_recovery.mat')
 recovery.csi.pbchDmrsLs
 recovery.csi.pdschDmrsLs
+recovery.csi.csirsCandidate
 ```
 
-`pbchDmrsLs`는 PBCH DM-RS 기반 sparse LS CSI입니다. SSB/MIB 복구 단계에서 생성됩니다.
+## Tips
 
-`pdschDmrsLs`는 SIB1 PDSCH DM-RS 기반 sparse LS CSI입니다. SIB1 recovery가 성공한 캡처에서만 생성됩니다.
-
-CSI figure는 PBCH DM-RS CSI와 PDSCH DM-RS CSI의 sparse grid magnitude/phase 및 reference RE 순서별 magnitude/phase를 보여줍니다.
-
-## Project Structure
-
-```text
-5g_channel_sounding/
-├── README.md
-├── docs/
-│   ├── resource.md
-│   └── sdr_capture_to_csi_pipeline.md
-├── config/
-│   └── default_config.m
-├── outputs/
-│   ├── 1_IQcapture/
-│   ├── 2_processed/
-│   │   └── figures/
-│   └── 3_validation/
-├── run1_capture_ssb_using_sdr.m
-├── run2_recover_mib_sib1_with_figures.m
-├── run2_recover_mib_sib1_from_data.m
-├── run3_validate_recovery_against_du_config.m
-└── src/
-    ├── NRCellSearchMIBAndSIB1RecoveryExample.m
-    ├── recoverMibSib1FromCapture.m
-    ├── hSDRReceiver.m
-    ├── hSDRBase.m
-    ├── hSynchronizationRasterInfo.m
-    └── official MathWorks helper files
-```
-
-## Configuration
-
-공식 예제 기반 SSB/MIB/SIB1/CSI 흐름의 주요 설정은 [config/default_config.m](config/default_config.m)에 있습니다.
-
-기본 타겟은 다음과 같습니다.
-
-```text
-Band: n79
-GSCN: 8720
-Center frequency: 4758.24 MHz
-Sample rate: 61.44 MS/s for SSB capture
-Capture duration: (framesPerCapture + 1) x 10 ms
-New capture filename: outputs/1_IQcapture/capturedWaveform_<timestamp>.mat
-Known PCI: 1003
-Channel bandwidth: 100 MHz deployment
-```
-
-상세 배경, 값의 출처, CSI 해석 기준은 [docs/resource.md](docs/resource.md)를 확인하세요.
+- X310 + UBX-160은 현재 `184.32 MS/s` profile로 설정되어 있습니다.
+- X310 캡처가 안 잡히면 먼저 IP 주소, 10GbE 연결, clock/reference 상태, RX 포트, gain을 확인하세요.
+- 캡처 주파수는 UE에서 본 `717216 / 4758.24 MHz` 기준입니다.
+- CSI-RS는 아직 후보 추출입니다. 확정 결과로 쓰려면 gNB의 CSI-RS row, port, CDM, slot offset, RB allocation, scrambling ID가 필요합니다.
+- 자세한 배경은 [docs/resource.md](docs/resource.md), 전체 처리 흐름은 [docs/sdr_capture_to_csi_pipeline.md](docs/sdr_capture_to_csi_pipeline.md)를 보세요.
