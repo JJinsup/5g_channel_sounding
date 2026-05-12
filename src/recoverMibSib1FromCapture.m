@@ -29,8 +29,8 @@ minChannelBWOverride = getOption(options,"minChannelBW",40); %#ok<NASGU> Consume
 closeFiguresAfterRun = getOption(options,"closeFiguresAfterRun",~enablePlots);
 saveResult = getOption(options,"saveResult",false);
 throwOnError = getOption(options,"throwOnError",false);
-outputDir = string(getOption(options,"outputDir",fullfile(repoRoot,"outputs","processed")));
-figureRoot = string(getOption(options,"figureRoot",fullfile(repoRoot,"outputs","figures")));
+outputDir = string(getOption(options,"outputDir",fullfile(repoRoot,"outputs","2_processed")));
+figureRoot = string(getOption(options,"figureRoot",fullfile(repoRoot,"outputs","2_processed","figures")));
 figureDir = string(getOption(options,"figureDir",""));
 if strlength(figureDir) == 0
     figureDir = fullfile(figureRoot,captureName);
@@ -351,7 +351,7 @@ end
 
 function captureFile = defaultCaptureFile()
 srcDir = fileparts(mfilename("fullpath"));
-captureFile = fullfile(srcDir,"..","data","61.44_260507.mat");
+captureFile = fullfile(srcDir,"..","outputs","1_IQcapture","61.44_260507.mat");
 end
 
 function resolved = resolveCaptureFile(captureFile, repoRoot)

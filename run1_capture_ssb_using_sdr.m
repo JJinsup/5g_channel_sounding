@@ -6,7 +6,7 @@ function result = run1_capture_ssb_using_sdr(varargin)
 %   compatible with NRCellSearchMIBAndSIB1RecoveryExample.
 %
 %   run1_capture_ssb_using_sdr("SaveFigures",true) saves generated figures
-%   under outputs/figures/<capture-file-name>.
+%   under outputs/2_processed/figures/<capture-file-name>.
 
 repoRoot = fileparts(mfilename("fullpath"));
 addpath(fullfile(repoRoot,"config"));

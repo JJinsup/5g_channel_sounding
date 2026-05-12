@@ -65,7 +65,7 @@
 % for education, but that is not part of the OTA measurement pipeline.
 scriptDir = fileparts(mfilename("fullpath"));
 if ~exist("captureFile","var") || strlength(string(captureFile)) == 0
-    captureFile = fullfile(scriptDir,"..","data","61.44_260507.mat");
+    captureFile = fullfile(scriptDir,"..","outputs","1_IQcapture","61.44_260507.mat");
 end
 if ~exist("enablePlots","var") || isempty(enablePlots)
     enablePlots = true;
@@ -956,14 +956,14 @@ function plotResourceGrid(rxGrid,refBurst,systemInfo,nLeadingFrames,ssbIndex,nHa
     % Draw bounding boxes around all SS/PBCH block occasions
     w = ssbTailSymbol - ssbHeadSymbol + 1;
     for i = 1:ceil(numFrames/2)
-        s = ssbHeadSymbol + (i-1)*2*10*symbolsPerSubframe + 5*symbolsPerSubframe*nHalfFrame;
+        s = ssbHeadSymbol + (i-1)*2*10*symbolsPerSubframe;
         if s <= (L - w)
             boundingBox(ssbFreqOrig,s,240*scsRatio,w,'EdgeColor',occasionColor);
         end
     end
 
     % Draw bounding box for detected SS/PBCH block
-    s = ssbHeadSymbol + nLeadingFrames*10*symbolsPerSubframe + 5*symbolsPerSubframe*nHalfFrame;
+    s = ssbHeadSymbol + nLeadingFrames*10*symbolsPerSubframe;
     boundingBox(ssbFreqOrig,s,240*scsRatio,w,basePlotProps{:},'EdgeColor',detectionColor)
 
     % Add text next to detected SS/PBCH block

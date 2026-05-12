@@ -35,10 +35,10 @@ cfg.receiver.enablePlots = false; % Batch recovery should not open tutorial figu
 
 cfg.paths = struct();
 cfg.paths.outputRoot = fullfile(repoRoot,"outputs");
-cfg.paths.processedRoot = fullfile(cfg.paths.outputRoot,"processed");
-cfg.paths.logsRoot = fullfile(cfg.paths.outputRoot,"logs");
-cfg.paths.figuresRoot = fullfile(cfg.paths.outputRoot,"figures");
-cfg.paths.dataRoot = fullfile(repoRoot,"data");
+cfg.paths.dataRoot = fullfile(cfg.paths.outputRoot,"1_IQcapture");
+cfg.paths.processedRoot = fullfile(cfg.paths.outputRoot,"2_processed");
+cfg.paths.validationRoot = fullfile(cfg.paths.outputRoot,"3_validation");
+cfg.paths.figuresRoot = fullfile(cfg.paths.processedRoot,"figures");
 
 cfg.figures = struct();
 cfg.figures.save = false;

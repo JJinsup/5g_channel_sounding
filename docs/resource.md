@@ -102,7 +102,7 @@ It intentionally keeps only:
 - SDR identity and receive settings
 - SSB capture GSCN, sample rate, and frames-per-capture
 - MIB/SIB1 recovery options
-- data/result/log paths
+- IQ capture, processed result, validation, and figure paths
 - figure save defaults
 
 The official SSB capture duration is controlled by:
@@ -113,7 +113,7 @@ captureDuration = seconds((framesPerCapture + 1)*10e-3);
 
 ## Figure Saving
 
-Interactive scripts display figures by default. Add `"SaveFigures",true` to save generated figures under `outputs/figures/<capture-file-name>/`.
+Interactive scripts display figures by default. Add `"SaveFigures",true` to save generated figures under `outputs/2_processed/figures/<capture-file-name>/`.
 
 ```matlab
 run1_capture_ssb_using_sdr("SaveFigures",true)
@@ -124,8 +124,8 @@ run2_recover_mib_sib1_from_data("SaveFigures",true)
 Optional arguments:
 
 ```matlab
-"FigureDir","outputs/figures/custom"
-"FigureFormat","png"   % png, fig, or both
+"FigureDir","outputs/2_processed/figures/custom"
+"FigureFormat","pdf"   % pdf, png, fig, or both
 "CloseFiguresAfterRun",true
 ```
 
@@ -134,16 +134,16 @@ top of the run scripts:
 
 ```matlab
 % run2_recover_mib_sib1_with_figures.m
-configuredCaptureFile = "data/61.44_260507.mat";
+configuredCaptureFile = "outputs/1_IQcapture/61.44_260507.mat";
 
 % run2_recover_mib_sib1_from_data.m
-configuredDataFiles = "data/61.44_260507.mat";
+configuredDataFiles = "outputs/1_IQcapture/61.44_260507.mat";
 ```
 
 Saved figure groups:
 
-- `mib_sib1_*.png`: MathWorks receiver-flow figures such as spectrogram, correlations, constellations, and resource grids
-- `csi_*.png`: project-added DM-RS CSI figures for sparse CSI magnitude/phase diagnostics
+- `figures.pdf`: MathWorks receiver-flow figures plus project-added DM-RS CSI figures as one multipage PDF
+- `mib_sib1_*.png` and `csi_*.png`: separate files when `"FigureFormat","png"` is selected
 
 CSI figures show:
 
@@ -155,7 +155,7 @@ CSI figures show:
 New SDR captures are named:
 
 ```text
-data/capturedWaveform_<timestamp>.mat
+outputs/1_IQcapture/capturedWaveform_<timestamp>.mat
 ```
 
 GSCN, band, gain, and channel mapping remain inside the MAT file metadata.
@@ -234,7 +234,7 @@ recovery.csi.pdschDmrsLs.pdsch
 
 ## Verified Captures
 
-Current saved captures under `data/`:
+Current saved captures under `outputs/1_IQcapture/`:
 
 ```text
 30.72_260507.mat

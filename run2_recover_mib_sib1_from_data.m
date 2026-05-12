@@ -4,7 +4,7 @@ function batchResult = run2_recover_mib_sib1_from_data(varargin)
 %   It uses the MathWorks receiver flow through recoverMibSib1FromCapture.
 %
 %   run2_recover_mib_sib1_from_data("SaveFigures",true) saves generated
-%   tutorial figures under outputs/figures/<capture-file-name>.
+%   tutorial figures under outputs/2_processed/figures/<capture-file-name>.
 
 repoRoot = fileparts(mfilename("fullpath"));
 addpath(fullfile(repoRoot,"config"));
@@ -12,8 +12,8 @@ addpath(fullfile(repoRoot,"src"));
 cfg = default_config(repoRoot);
 
 %% User Settings
-% Leave empty to analyze every MAT file under data/.
-configuredDataFiles = "data/61.44_260507.mat";
+% Leave empty to analyze every MAT file under outputs/1_IQcapture/.
+configuredDataFiles = "outputs/1_IQcapture/61.44_260507.mat";
 configuredSaveFigures = true;
 
 [dataFiles,runOptions] = parseInputs(varargin{:});
@@ -25,11 +25,7 @@ if isempty(varargin)
 end
 
 if isempty(dataFiles)
-    listing = dir(fullfile(repoRoot,"data","*.mat"));
-    dataFiles = strings(numel(listing),1);
-    for idx = 1:numel(listing)
-        dataFiles(idx) = string(fullfile(listing(idx).folder,listing(idx).name));
-    end
+    dataFiles = listCaptureFiles(cfg.paths.dataRoot);
 end
 
 if isempty(dataFiles)
@@ -66,11 +62,11 @@ for idx = 1:numel(dataFiles)
 end
 
 summaryTable = struct2table([summaryRows{:}]');
-logsRoot = cfg.paths.logsRoot;
-if ~isfolder(logsRoot)
-    mkdir(logsRoot);
+processedRoot = cfg.paths.processedRoot;
+if ~isfolder(processedRoot)
+    mkdir(processedRoot);
 end
-outputPath = fullfile(logsRoot, ...
+outputPath = fullfile(processedRoot, ...
     "mib_sib1_batch_" + string(datetime("now","Format","yyyyMMdd_HHmmss")) + ".mat");
 save(outputPath,"summaryTable","dataFiles","-v7.3");
 
@@ -139,6 +135,18 @@ if isnumeric(value)
     return;
 end
 value = any(strcmpi(string(value),["true" "on" "yes" "1"]));
+end
+
+function dataFiles = listCaptureFiles(dataRoot)
+dataFiles = strings(0,1);
+listing = dir(fullfile(dataRoot,"*.mat"));
+if isempty(listing)
+    return;
+end
+dataFiles = strings(numel(listing),1);
+for idx = 1:numel(listing)
+    dataFiles(idx) = string(fullfile(listing(idx).folder,listing(idx).name));
+end
 end
 
 function row = summarizeRecovery(recovery)

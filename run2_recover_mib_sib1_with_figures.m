@@ -5,15 +5,15 @@ function recovery = run2_recover_mib_sib1_with_figures(varargin)
 %   wrapper to save a structured recovery result.
 %
 %   run2_recover_mib_sib1_with_figures("SaveFigures",true) saves generated
-%   tutorial figures under outputs/figures/<capture-file-name>.
+%   tutorial figures under outputs/2_processed/figures/<capture-file-name>.
 
 repoRoot = fileparts(mfilename("fullpath"));
 addpath(fullfile(repoRoot,"config"));
 addpath(fullfile(repoRoot,"src"));
 
 %% User Settings
-% Leave empty to use the latest capturedWaveform_*.mat or the fallback file.
-configuredCaptureFile = "data/61.44_260507.mat";
+% Leave empty to use the latest capturedWaveform_*.mat in outputs/1_IQcapture.
+configuredCaptureFile = "outputs/1_IQcapture/61.44_260507.mat";
 configuredSaveFigures = false;
 
 cfg = default_config(repoRoot);
@@ -109,7 +109,7 @@ value = any(strcmpi(string(value),["true" "on" "yes" "1"]));
 end
 
 function captureFile = chooseDefaultCaptureFile(repoRoot)
-dataRoot = fullfile(repoRoot,"data");
+dataRoot = fullfile(repoRoot,"outputs","1_IQcapture");
 capturedFiles = dir(fullfile(dataRoot,"capturedWaveform_*.mat"));
 if ~isempty(capturedFiles)
     [~,idx] = max([capturedFiles.datenum]);
@@ -117,17 +117,18 @@ if ~isempty(capturedFiles)
     return;
 end
 
-fallback = fullfile(dataRoot,"61.44_260507.mat");
-if isfile(fallback)
-    captureFile = fallback;
+defaultFile = fullfile(dataRoot,"61.44_260507.mat");
+if isfile(defaultFile)
+    captureFile = defaultFile;
     return;
 end
 
 allFiles = dir(fullfile(dataRoot,"*.mat"));
-if isempty(allFiles)
-    error("run2_recover_mib_sib1_with_figures:NoCaptureFile", ...
-        "No MAT capture files found in %s.",dataRoot);
+if ~isempty(allFiles)
+    [~,idx] = max([allFiles.datenum]);
+    captureFile = fullfile(allFiles(idx).folder,allFiles(idx).name);
+    return;
 end
-[~,idx] = max([allFiles.datenum]);
-captureFile = fullfile(allFiles(idx).folder,allFiles(idx).name);
+error("run2_recover_mib_sib1_with_figures:NoCaptureFile", ...
+    "No MAT capture files found in %s.",dataRoot);
 end
